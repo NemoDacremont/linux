@@ -79,23 +79,34 @@ kernel::pci_device_table!(
     )]
 );
 
+#[derive(Debug)]
+enum InitError {
+    SoftwareResetStuck,
+}
+
 impl Rtl8139Driver {
-    fn init(pdev: &pci::Device, bar: &Bar0) {
+    fn init(pdev: &pci::Device, bar: &Bar0) -> Result<(), InitError> {
         // turn on
         bar.writeb(0x0, Regs::Config1);
 
         // software reset
         bar.writeb(ChipCmdBits::CmdReset as u8, Regs::ChipCmd);
-        // for i in 0..1000 {
-        //     // timeout to 1K iters like the original impl
-        //     let cmd = bar.readb(Regs::ChipCmd);
-        //     dev_info!(pdev.as_ref(), "rtl8139rs {}\n", cmd);
-        //     if (cmd & ChipCmdBits::CmdReset as u8) == 0 {
-        //         break;
-        //     }
-        //     // TODO: find a way to sleep here (kernel crate doesn't seem to expose [`usleep()`])
-        // }
+        for i in 0..1000 {
+            // timeout to 1K iters like the original impl
+            let cmd = bar.readb(Regs::ChipCmd);
+            dev_info!(pdev.as_ref(), "rtl8139rs {}\n", cmd);
+            if (cmd & ChipCmdBits::CmdReset as u8) == 0 {
+                break;
+            }
+            // TODO: find a way to sleep here (kernel crate doesn't seem to expose [`usleep()`])
+            if i == 999 {
+                return Err(InitError::SoftwareResetStuck);
+            }
+        }
+
         dev_info!(pdev.as_ref(), "rtl8139rs init done!\n");
+
+        Ok(()) // TODO: will return a [`net_device`] later
     }
 
     fn mac(bar: &Bar0) -> [u8; 6] {
@@ -135,8 +146,13 @@ impl pci::Driver for Rtl8139Driver {
 
         let bar = drvdata.bar.try_access().ok_or(ENXIO)?;
 
-        Self::init(pdev, &bar);
-        dev_info!(pdev.as_ref(), "rtl8139rs mac: {:?}\n", Self::mac(&bar));
+        // START
+        if let Err(e) = Self::init(pdev, &bar) {
+            dev_err!(pdev.as_ref(), "rtl8139rs failed to init, reason: {:?}\n", e);
+            return Err(ENXIO); // TODO: find a better error which doesn't do weird unexpected retries or anything else
+        }
+        let mac = Self::mac(&bar);
+        dev_info!(pdev.as_ref(), "rtl8139rs mac: {:?}\n", mac);
 
         Ok(drvdata.into())
     }
