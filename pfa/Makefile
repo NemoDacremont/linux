@@ -1,6 +1,6 @@
 BUILD_DIR?=build
 LINUX_PATH?=../
-QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage -initrd build/initramfs.cpio.gz -nographic -append "console=ttyS0" --enable-kvm
+QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage -initrd build/initramfs.cpio.gz -nographic -append "console=ttyS0" -device pci-testdev
 OS=$(shell grep '^NAME=' /etc/os-release | tr -d '"' | sed 's/^NAME=//')
 
 REQ_CMD=musl-gcc wget xz gzip gcc make git flex bison cpio xz bzip2 bc qemu-system-x86_64
