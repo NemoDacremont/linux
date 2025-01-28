@@ -57,13 +57,6 @@ enum ChipCmdBits {
 
 type Bar0 = pci::Bar<{ Regs::END }>;
 
-#[derive(Debug)]
-struct TestIndex(u8);
-
-impl TestIndex {
-    const NO_EVENTFD: Self = Self(0);
-}
-
 struct Rtl8139Driver {
     pdev: pci::Device,
     bar: Devres<Bar0>,
@@ -73,10 +66,7 @@ kernel::pci_device_table!(
     PCI_TABLE,
     MODULE_PCI_TABLE,
     <Rtl8139Driver as pci::Driver>::IdInfo,
-    [(
-        pci::DeviceId::from_id(0x10EC, 0x8139),
-        TestIndex::NO_EVENTFD
-    )]
+    [(pci::DeviceId::from_id(0x10EC, 0x8139), ())]
 );
 
 #[derive(Debug)]
@@ -119,7 +109,7 @@ impl Rtl8139Driver {
 }
 
 impl pci::Driver for Rtl8139Driver {
-    type IdInfo = TestIndex;
+    type IdInfo = ();
 
     const ID_TABLE: pci::IdTable<Self::IdInfo> = &PCI_TABLE;
 
