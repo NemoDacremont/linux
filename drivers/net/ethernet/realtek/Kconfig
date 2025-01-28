@@ -55,6 +55,15 @@ config 8139TOO
 	  To compile this driver as a module, choose M here: the module
 	  will be called 8139too.  This is recommended.
 
+config 8139RS
+	tristate "RealTek RTL-8129/8130/8139 Rust PCI Fast Ethernet Adapter support"
+	depends on PCI
+	select CRC32
+	select MII
+	help
+	  This is a rust verion of the rtl831too.c driver for the Fast Ethernet PCI network cards based on
+	  the RTL 8129/8130/8139 chips.
+
 config 8139TOO_PIO
 	bool "Use PIO instead of MMIO"
 	default y
