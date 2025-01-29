@@ -4,6 +4,8 @@
 //!
 //! To make this driver probe, QEMU must be run with `-netdev user,id=mynet0 -device rtl8139,netdev=mynet0`.
 
+use core::hint::black_box;
+
 use kernel::{bindings, c_str, devres::Devres, pci, prelude::*};
 
 struct Regs;
@@ -89,6 +91,17 @@ impl Rtl8139Driver {
                 break;
             }
             // TODO: find a way to sleep here (kernel crate doesn't seem to expose [`usleep()`])
+
+            // hacky sleep()
+            black_box({
+                let mut acc = 0;
+                for i in 0..1_000 {
+                    black_box({
+                        acc += 2;
+                    });
+                }
+            });
+
             if i == 999 {
                 return Err(InitError::SoftwareResetStuck);
             }
