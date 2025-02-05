@@ -5,7 +5,6 @@
 //! To make this driver probe, QEMU must be run with `-netdev user,id=mynet0 -device rtl8139,netdev=mynet0`.
 
 use core::hint::black_box;
-
 use kernel::{bindings, c_str, devres::Devres, pci, prelude::*};
 
 struct Regs;
@@ -74,10 +73,18 @@ kernel::pci_device_table!(
 #[derive(Debug)]
 enum InitError {
     SoftwareResetStuck,
+    BarRevoked,
+}
+
+enum MacGetError {
+    BarRevoked,
 }
 
 impl Rtl8139Driver {
-    fn init(pdev: &pci::Device, bar: &Bar0) -> Result<(), InitError> {
+    const DRV_NAME: &str = "8139rs";
+
+    fn init(pdev: pci::Device, bar_res: Devres<Bar0>) -> Result<Self, InitError> {
+        let bar = bar_res.try_access().ok_or(InitError::BarRevoked)?;
         // turn on
         bar.writeb(0x0, Regs::Config1);
 
@@ -109,15 +116,16 @@ impl Rtl8139Driver {
 
         dev_info!(pdev.as_ref(), "rtl8139rs init done!\n");
 
-        Ok(()) // TODO: will return a [`net_device`] later
+        Ok(Self { pdev, bar: bar_res }) // TODO: will return a [`net_device`] later
     }
 
-    fn mac(bar: &Bar0) -> [u8; 6] {
+    fn mac(&self) -> Result<[u8; 6], MacGetError> {
+        let bar = self.bar.try_access().ok_or(MacGetError::BarRevoked)?;
         let mut mac = [0u8; 6];
         for i in 0..6 {
             mac[i] = bar.readb(Regs::MAC0 + i);
         }
-        mac
+        Ok(mac)
     }
 }
 
@@ -139,25 +147,20 @@ impl pci::Driver for Rtl8139Driver {
 
         let bar = pdev.iomap_region_sized::<{ Regs::END }>(0, c_str!("rust_rtl8139_driver"))?;
 
-        let drvdata = KBox::new(
-            Self {
-                pdev: pdev.clone(),
-                bar,
-            },
-            GFP_KERNEL,
-        )?;
-
-        let bar = drvdata.bar.try_access().ok_or(ENXIO)?;
-
         // START
-        if let Err(e) = Self::init(pdev, &bar) {
-            dev_err!(pdev.as_ref(), "rtl8139rs failed to init, reason: {:?}\n", e);
-            return Err(ENXIO); // TODO: find a better error which doesn't do weird unexpected retries or anything else
-        }
-        let mac = Self::mac(&bar);
+        let drv_instance = match Self::init(pdev.clone(), bar) {
+            Ok(drv) => drv,
+            Err(e) => {
+                dev_err!(pdev.as_ref(), "rtl8139rs failed to init, reason: {:?}\n", e);
+                return Err(ENXIO); // TODO: find a better error which doesn't do weird unexpected retries or anything else
+            }
+        };
+        let drv_instance = KBox::new(drv_instance, GFP_KERNEL)?;
+
+        let mac = drv_instance.mac().map_err(|_| ENXIO)?;
         dev_info!(pdev.as_ref(), "rtl8139rs mac: {:?}\n", mac);
 
-        Ok(drvdata.into())
+        Ok(drv_instance.into())
     }
 }
 
