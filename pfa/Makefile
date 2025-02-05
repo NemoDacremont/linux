@@ -1,5 +1,5 @@
 BUILD_DIR?=build
-LINUX_PATH?=../
+LINUX_PATH?=..
 QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage -initrd build/initramfs.cpio.gz -nographic -append "console=ttyS0" -device pci-testdev
 OS=$(shell grep '^NAME=' /etc/os-release | tr -d '"' | sed 's/^NAME=//')
 
@@ -34,7 +34,11 @@ check_deps: ${REQ_CMD_TARGETS}
 check_dep_%:
 	@which $* 2>&1 > /dev/null || (echo -e "\n(ERROR) couldn\'t find $*, considere installing all dependencies with : \n${DEP_CMD}\n" 1>&2 ; exit 1)
 
+test_format: c_testformat
+
+format: c_format
+
 clean:
 	${RM} -r build
 
-.phony: all build clean check_deps ${REQ_CMD_TARGETS}
+.phony: all build clean check_deps ${REQ_CMD_TARGETS} test_format
