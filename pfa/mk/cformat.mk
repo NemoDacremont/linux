@@ -1,5 +1,6 @@
 LINUX_PATH?=..
 C_FILES+=${LINUX_PATH}/drivers/net/ethernet/realtek/8139c.c
+
 # flags for format and test
 CLANG_FLAGS=
 # flags only for format (ex: -i to format in place)
@@ -15,4 +16,4 @@ c_format:
 c_testformat:
 	clang-format ${CLANG_FLAGS} ${CLANG_TEST_FLAGS} ${C_FILES} 2>/dev/null
 
-.phony: all format_c c_testformat
+.phony: all c_format c_testformat
