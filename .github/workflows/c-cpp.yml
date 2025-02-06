@@ -10,4 +10,4 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Test code formatting
-      run: make test_format
+      run: make -C pfa test_format
