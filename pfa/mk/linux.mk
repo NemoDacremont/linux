@@ -14,7 +14,7 @@
 #
 BUILD_DIR?=build
 # Path to linux submodule
-LINUX_PATH?=../
+LINUX_PATH?=..
 
 # Env var using path after uncompressing tar archive
 LLVM=llvm-19.1.7-rust-1.84.0-x86_64
