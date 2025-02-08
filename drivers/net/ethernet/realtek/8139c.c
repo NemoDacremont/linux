@@ -122,8 +122,7 @@ static void rtl8139c_remove(struct pci_dev *pdev)
 	pr_info("RTL8139c removed\n");
 }
 
-/* Perhaps it will be useful later
- *
+// Can throw errors if the device is busy
 static void rtl8139c_resume(struct device *device)
 {
 	pr_info("RTL8139c resume\n");
@@ -134,7 +133,6 @@ static int rtl8139c_suspend(struct device *device)
 	pr_info("RTL8139c suspend\n");
 	return 0;
 }
- */
 
 static SIMPLE_DEV_PM_OPS(rtl8139c_pm_ops, rtl8139c_suspend, rtl8139c_resume);
 
