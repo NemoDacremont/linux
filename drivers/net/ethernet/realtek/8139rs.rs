@@ -56,11 +56,11 @@ enum ChipCmdBits {
     RxBufEmpty = 0x01,
 }
 
-type Bar0 = pci::Bar<{ Regs::END }>;
+type Bar1 = pci::Bar<{ Regs::END }>;
 
 struct Rtl8139Driver {
     pdev: pci::Device,
-    bar: Devres<Bar0>,
+    bar: Devres<Bar1>,
 }
 
 kernel::pci_device_table!(
@@ -76,6 +76,7 @@ enum InitError {
     BarRevoked,
 }
 
+#[derive(Debug)]
 enum MacGetError {
     BarRevoked,
 }
@@ -95,7 +96,7 @@ fn sleep(amount: usize) {
 impl Rtl8139Driver {
     const DRV_NAME: &str = "8139rs";
 
-    fn init(pdev: pci::Device, bar_res: Devres<Bar0>) -> Result<Self, InitError> {
+    fn init(pdev: pci::Device, bar_res: Devres<Bar1>) -> Result<Self, InitError> {
         let bar = bar_res.try_access().ok_or(InitError::BarRevoked)?;
 
         // turn on
