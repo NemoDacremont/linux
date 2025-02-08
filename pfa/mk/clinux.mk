@@ -22,10 +22,6 @@ clinux_all:
 	yes "" | make -C ${LINUX_PATH} -j$(shell nproc)
 
 clinux_config:
-	@# make defconfig
-	PATH=${build_path} LIBCLANG_PATH=${libclang_path} make -C ${LINUX_PATH} LLVM=1 defconfig
-	@# Additional configuration flag
-	sed -i 's/.*8139.*///' ${LINUX_PATH}/.config
-	echo 'CONFIG_8139C=y' >> ${LINUX_PATH}/.config
+	cp mk/cconfig ${LINUX_PATH}/.config
 
 .phony: all linux_all clinux_config

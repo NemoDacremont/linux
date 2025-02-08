@@ -1,6 +1,15 @@
 BUILD_DIR?=build
 LINUX_PATH?=..
-QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage -initrd build/initramfs.cpio.gz -nographic -append "console=ttyS0" -device pci-testdev -netdev user,id=mynet0 -device rtl8139,netdev=mynet0
+QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
+	   -initrd build/initramfs.cpio.gz \
+	   -no-reboot \
+	   -nographic \
+	   -append "console=ttyS0 panic=-1 loglevel=15" \
+	   -device pci-testdev \
+	   -netdev user,id=mynet0 \
+	   -device rtl8139,netdev=mynet0
+
+
 OS=$(shell grep '^NAME=' /etc/os-release | tr -d '"' | sed 's/^NAME=//')
 
 REQ_CMD=musl-gcc wget xz gzip gcc make git flex bison cpio xz bzip2 bc qemu-system-x86_64
