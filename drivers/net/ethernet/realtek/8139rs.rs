@@ -102,8 +102,6 @@ impl Rtl8139Driver {
         bar.writeb(0x0, Regs::Config1);
 
         // software reset
-        let cmd = bar.readb(Regs::ChipCmd);
-        dev_info!(pdev.as_ref(), "rtl8139rs's ChipCmd after sleep {}\n", cmd);
         bar.writeb(ChipCmdBits::CmdReset as u8, Regs::ChipCmd);
         for i in 0..1000 {
             if (bar.readb(Regs::ChipCmd) & ChipCmdBits::CmdReset as u8) == 0 {
@@ -117,7 +115,6 @@ impl Rtl8139Driver {
         }
 
         dev_info!(pdev.as_ref(), "rtl8139rs init done!\n");
-
         Ok(Self { pdev, bar: bar_res }) // TODO: will return a [`net_device`] later
     }
 
