@@ -28,9 +28,9 @@ libclang_path=${llvm_prefix}/lib/libclang.so
 # prevent execution of initramfs_all on include
 all:
 
-linux_all: linux_rustavailable ${LINUX_PATH}/vmlinux
+rlinux_all: linux_rustavailable ${LINUX_PATH}/vmlinux
 
-linux_rustavailable: ${BUILD_DIR}/.bindgen.installed
+rlinux_rustavailable: ${BUILD_DIR}/.bindgen.installed
 	PATH=${build_path} LIBCLANG_PATH=${libclang_path} make -C ${LINUX_PATH} LLVM=1 rustavailable
 
 # llvm-rust lock file
@@ -54,14 +54,11 @@ ${LINUX_PATH}/.config:
 	@# make defconfig
 	PATH=${build_path} LIBCLANG_PATH=${libclang_path} make -C ${LINUX_PATH} LLVM=1 defconfig
 	@# Additional configuration flag
-	echo 'CONFIG_RUST=y' >> $@
-	echo 'CONFIG_SAMPLES=y' >> $@
-	echo 'CONFIG_SAMPLES_RUST=y' >> $@
-	echo 'CONFIG_SAMPLE_RUST_DRIVER_PCI=y' >> $@
-	echo 'CONFIG_RUST_OVERFLOW_CHECKS=y' >> $@
+	sed -i 's/.*8139.*///' $@
+	echo 'CONFIG_8139C=y'
 
 # Build linux
 ${LINUX_PATH}/vmlinux: ${BUILD_DIR}/.bindgen.installed ${LINUX_PATH}/.config
 	yes "" | PATH=${build_path} LIBCLANG_PATH=${libclang_path} make -C ${LINUX_PATH} LLVM=1 -j$(shell nproc)
 
-.phony: all linux_all
+.phony: all rlinux_all rlinux_rustavailable
