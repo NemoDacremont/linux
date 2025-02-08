@@ -123,12 +123,13 @@ static void rtl8139c_remove(struct pci_dev *pdev)
 }
 
 // Can throw warns, but it's not a problem
-static void rtl8139c_resume(struct device *device)
+static int __maybe_unused rtl8139c_resume(struct device *device)
 {
 	pr_info("RTL8139c resume\n");
+	return 0;
 }
 
-static int rtl8139c_suspend(struct device *device)
+static int __maybe_unused rtl8139c_suspend(struct device *device)
 {
 	pr_info("RTL8139c suspend\n");
 	return 0;
