@@ -18,7 +18,7 @@ LINUX_PATH?=..
 
 all: clinux_all
 
-clinux_all: 
+clinux_all: clinux_config
 	yes "" | make -C ${LINUX_PATH} -j$(shell nproc)
 
 clinux_config:
