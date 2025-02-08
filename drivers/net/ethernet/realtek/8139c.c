@@ -122,7 +122,7 @@ static void rtl8139c_remove(struct pci_dev *pdev)
 	pr_info("RTL8139c removed\n");
 }
 
-// Can throw errors if the device is busy
+// Can throw warns, but it's not a problem
 static void rtl8139c_resume(struct device *device)
 {
 	pr_info("RTL8139c resume\n");
