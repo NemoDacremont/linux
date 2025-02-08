@@ -80,7 +80,7 @@ enum MacGetError {
     BarRevoked,
 }
 
-/// hacky sleep() implemented by busy looping
+/// hacky sleep() implemented by busy looping (kernel crate doesn't expose [`usleep()`])
 fn sleep(amount: usize) {
     black_box({
         let mut acc = 0;
@@ -107,7 +107,6 @@ impl Rtl8139Driver {
             if (bar.readb(Regs::ChipCmd) & ChipCmdBits::CmdReset as u8) == 0 {
                 break;
             }
-            // TODO: find a way to sleep here (kernel crate doesn't seem to expose [`usleep()`])
             sleep(1_000);
         }
         if bar.readb(Regs::ChipCmd) & ChipCmdBits::CmdReset as u8 != 0 {
