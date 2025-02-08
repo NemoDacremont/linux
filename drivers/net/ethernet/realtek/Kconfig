@@ -55,6 +55,16 @@ config 8139TOO
 	  To compile this driver as a module, choose M here: the module
 	  will be called 8139too.  This is recommended.
 
+config 8139C
+	tristate "RealTek RTL-8139 Super Fast As Hell Ethernet Adapter support"
+	depends on PCI
+	select CRC32
+	select MII
+	help
+	  This is a driver for the Super Fast As HellFast Ethernet PCI network
+	  cards based on the RTL 8129/8130/8139 chips. If you have one of those,
+	  say Y here.
+
 config 8139RS
 	tristate "RealTek RTL-8129/8130/8139 Rust PCI Fast Ethernet Adapter support"
 	depends on PCI

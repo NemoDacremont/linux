@@ -1,6 +1,15 @@
 BUILD_DIR?=build
-LINUX_PATH?=../
-QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage -initrd build/initramfs.cpio.gz -nographic -append "console=ttyS0" -device pci-testdev
+LINUX_PATH?=..
+QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
+	   -initrd build/initramfs.cpio.gz \
+	   -no-reboot \
+	   -nographic \
+	   -append "console=ttyS0 panic=-1 loglevel=15" \
+	   -device pci-testdev \
+	   -netdev user,id=mynet0 \
+	   -device rtl8139,netdev=mynet0
+
+
 OS=$(shell grep '^NAME=' /etc/os-release | tr -d '"' | sed 's/^NAME=//')
 
 REQ_CMD=musl-gcc wget xz gzip gcc make git flex bison cpio xz bzip2 bc qemu-system-x86_64
@@ -23,18 +32,31 @@ include mk/*.mk
 
 all: build
 
-build: check_deps busybox_all linux_all initramfs_all
+build: rbuild
 
-start: check_deps build
+rbuild: check_deps busybox_all rlinux_all initramfs_all
+
+cbuild: check_deps busybox_all clinux_all initramfs_all
+
+rstart:  check_deps rbuild
+	qemu-system-x86_64 ${QEMUFLAGS}
+
+cstart:  check_deps cbuild
 	qemu-system-x86_64 ${QEMUFLAGS}
 
 check_deps: ${REQ_CMD_TARGETS}
 
-# test if % is installed, recommand to use ${DEP_CMD} otherwise
+# Test if % is installed, recommand to use ${DEP_CMD} otherwise
 check_dep_%:
 	@which $* 2>&1 > /dev/null || (echo -e "\n(ERROR) couldn\'t find $*, considere installing all dependencies with : \n${DEP_CMD}\n" 1>&2 ; exit 1)
+
+# Test if all driver files are formatted
+test_format: c_testformat
+
+# Format all driver files
+format: c_format
 
 clean:
 	${RM} -r build
 
-.phony: all build clean check_deps ${REQ_CMD_TARGETS}
+.phony: all build clean check_deps test_format format ${REQ_CMD_TARGETS}

@@ -31,4 +31,4 @@ ${BUILD_DIR}/busybox-1_36_0/linux-headers-4.19.88-2: ${BUILD_DIR}/busybox-1_36_0
 ${BUILD_DIR}/busybox-1_36_0/_install: ${BUILD_DIR}/busybox-1_36_0 ${BUILD_DIR}/busybox-1_36_0/.config ${BUILD_DIR}/busybox-1_36_0/linux-headers-4.19.88-2
 	make install -C ${BUILD_DIR}/busybox-1_36_0 CC=musl-gcc CFLAGS="-Ilinux-headers-4.19.88-2/x86/include" -j$(shell nproc)
 
-.phony: busybox_all all
+.PHONY: busybox_all all
