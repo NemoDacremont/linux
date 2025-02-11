@@ -14,7 +14,8 @@
 #include <linux/io.h>
 
 #ifndef MAC_ADDRESS_MESSAGE
-#define MAC_ADDRESS_MESSAGE "\b[RTL8139c] MAC address: tval_v0|%02x:%02x:%02x:%02x:%02x:%02x\n"
+#define MAC_ADDRESS_MESSAGE \
+	"\b[RTL8139c] MAC address: tval_v0|%02x:%02x:%02x:%02x:%02x:%02x\n"
 #endif // MAC_ADDRESS_MESSAGE
 
 enum RTL8139c_registers {
