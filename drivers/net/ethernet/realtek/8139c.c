@@ -13,6 +13,10 @@
 #include <linux/delay.h>
 #include <linux/io.h>
 
+#ifndef MAC_ADDRESS_MESSAGE
+#define MAC_ADDRESS_MESSAGE "tval_v0|%02x:%02x:%02x:%02x:%02x:%02x\n"
+#endif // MAC_ADDRESS_MESSAGE
+
 enum RTL8139c_registers {
 	MAC0 = 0, /* Ethernet hardware address. */
 	MAR0 = 8, /* Multicast filter. */
@@ -46,10 +50,10 @@ struct rtl8139c_priv {
 
 static void rtl8139c_print_mac_address(struct rtl8139c_priv *drv_priv)
 {
-	pr_info("\b[RTL8139c] MAC address: %02x:%02x:%02x:%02x:%02x:%02x\n",
-		drv_priv->mac_address[0], drv_priv->mac_address[1],
-		drv_priv->mac_address[2], drv_priv->mac_address[3],
-		drv_priv->mac_address[4], drv_priv->mac_address[5]);
+	pr_info(MAC_ADDRESS_MESSAGE, drv_priv->mac_address[0],
+		drv_priv->mac_address[1], drv_priv->mac_address[2],
+		drv_priv->mac_address[3], drv_priv->mac_address[4],
+		drv_priv->mac_address[5]);
 }
 
 static int rtl8139c_reset(struct rtl8139c_priv *drv_priv)
