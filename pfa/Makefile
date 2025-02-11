@@ -1,5 +1,6 @@
 BUILD_DIR?=build
 LINUX_PATH?=..
+MAC_ADDRESS=de:ad:be:ef:ca:fe
 QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
 	   -initrd build/initramfs.cpio.gz \
 	   -no-reboot \
@@ -7,7 +8,16 @@ QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
 	   -append "console=ttyS0 panic=-1 loglevel=15" \
 	   -device pci-testdev \
 	   -netdev user,id=mynet0 \
-	   -device rtl8139,netdev=mynet0
+	   -device rtl8139,netdev=mynet0,mac=${MAC_ADDRESS}
+
+tval_v0_QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
+	   -initrd build/initramfs.cpio.gz \
+	   -no-reboot \
+	   -nographic \
+	   -append "console=ttyS0 panic=-1 loglevel=15 init='/init -c /sbin/poweroff -f'" \
+	   -device pci-testdev \
+	   -netdev user,id=mynet0 \
+	   -device rtl8139,netdev=mynet0,mac=${MAC_ADDRESS}
 
 
 OS=$(shell grep '^NAME=' /etc/os-release | tr -d '"' | sed 's/^NAME=//')
@@ -44,6 +54,10 @@ rstart:  check_deps rbuild
 cstart:  check_deps cbuild
 	qemu-system-x86_64 ${QEMUFLAGS}
 
+tval_v0:  check_deps cbuild
+	(qemu-system-x86_64 ${tval_v0_QEMUFLAGS} | grep "tval_v0|${MAC_ADDRESS}" 2>/dev/null >/dev/null) \
+		|| (echo "Couldn't find the tag 'tval_v0|${MAC_ADDRESS}' in kernel logs"; exit 1)
+
 check_deps: ${REQ_CMD_TARGETS}
 
 # Test if % is installed, recommand to use ${DEP_CMD} otherwise
@@ -59,4 +73,4 @@ format: c_format
 clean:
 	${RM} -r build
 
-.phony: all build clean check_deps test_format format ${REQ_CMD_TARGETS}
+.PHONY: all build clean check_deps test_format format ${REQ_CMD_TARGETS}
