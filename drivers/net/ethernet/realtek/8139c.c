@@ -41,6 +41,7 @@ MODULE_DEVICE_TABLE(pci, rtl8139c_pci_tbl);
 
 struct rtl8139c_priv {
 	void __iomem *hwmem;
+	char mac_address[6];
 };
 
 static int rtl8139c_reset(struct rtl8139c_priv *drv_priv)
@@ -101,13 +102,15 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		return err;
 	}
 
-	// print MAC address
-	char mac[6] = {};
+	// Get MAC address
 	for (int i = 0; i < 6; i++) {
-		mac[i] = readb(drv_priv->hwmem + MAC0 + i);
+		drv_priv->mac_address[i] = readb(drv_priv->hwmem + MAC0 + i);
 	}
+
 	pr_info("\b[RTL8139c] MAC address: %02x:%02x:%02x:%02x:%02x:%02x\n",
-		mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+		drv_priv->mac_address[0], drv_priv->mac_address[1],
+		drv_priv->mac_address[2], drv_priv->mac_address[3],
+		drv_priv->mac_address[4], drv_priv->mac_address[5]);
 
 	return 0;
 }
