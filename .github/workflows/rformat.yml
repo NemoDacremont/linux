@@ -1,0 +1,16 @@
+name: Rust format
+
+on:
+  pull_request:
+    paths:
+      - 'drivers/**/*.rs'
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Test rust format
+      run: make -C pfa rust_testformat
