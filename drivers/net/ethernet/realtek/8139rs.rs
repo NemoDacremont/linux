@@ -4,9 +4,8 @@
 //!
 //! To make this driver probe, QEMU must be run with `-netdev user,id=mynet0 -device rtl8139,netdev=mynet0`.
 
-use core::hint::black_box;
-
-use kernel::{bindings, c_str, devres::Devres, pci, prelude::*};
+use core::{fmt, hint::black_box};
+use kernel::{c_str, devres::Devres, pci, prelude::*};
 
 struct Regs;
 
@@ -57,11 +56,11 @@ enum ChipCmdBits {
     RxBufEmpty = 0x01,
 }
 
-type Bar0 = pci::Bar<{ Regs::END }>;
+type Bar1 = pci::Bar<{ Regs::END }>;
 
 struct Rtl8139Driver {
     pdev: pci::Device,
-    bar: Devres<Bar0>,
+    bar: Devres<Bar1>,
 }
 
 kernel::pci_device_table!(
@@ -74,50 +73,70 @@ kernel::pci_device_table!(
 #[derive(Debug)]
 enum InitError {
     SoftwareResetStuck,
+    BarRevoked,
+}
+
+#[derive(Debug)]
+enum MacGetError {
+    BarRevoked,
+}
+
+struct MacAddress([u8; 6]);
+
+impl fmt::Display for MacAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
+        )
+    }
+}
+
+/// hacky sleep() implemented by busy looping (kernel crate doesn't expose [`usleep()`])
+fn sleep(amount: usize) {
+    black_box({
+        let mut acc = 0;
+        for i in 0..amount {
+            black_box({
+                acc += 2;
+            });
+        }
+    });
 }
 
 impl Rtl8139Driver {
-    fn init(pdev: &pci::Device, bar: &Bar0) -> Result<(), InitError> {
+    const DRV_NAME: &str = "8139rs";
+
+    fn init(pdev: pci::Device, bar_res: Devres<Bar1>) -> Result<Self, InitError> {
+        let bar = bar_res.try_access().ok_or(InitError::BarRevoked)?;
+
         // turn on
         bar.writeb(0x0, Regs::Config1);
 
         // software reset
         bar.writeb(ChipCmdBits::CmdReset as u8, Regs::ChipCmd);
         for i in 0..1000 {
-            // timeout to 1K iters like the original impl
-            let cmd = bar.readb(Regs::ChipCmd);
-            dev_info!(pdev.as_ref(), "rtl8139rs {}\n", cmd);
-            if (cmd & ChipCmdBits::CmdReset as u8) == 0 {
+            if (bar.readb(Regs::ChipCmd) & ChipCmdBits::CmdReset as u8) == 0 {
                 break;
             }
-            // TODO: find a way to sleep here (kernel crate doesn't seem to expose [`usleep()`])
-
-            // hacky sleep()
-            black_box({
-                let mut acc = 0;
-                for i in 0..1_000 {
-                    black_box({
-                        acc += 2;
-                    });
-                }
-            });
-
-            if i == 999 {
-                return Err(InitError::SoftwareResetStuck);
-            }
+            sleep(1_000);
+        }
+        if bar.readb(Regs::ChipCmd) & ChipCmdBits::CmdReset as u8 != 0 {
+            return Err(InitError::SoftwareResetStuck);
         }
 
-        dev_info!(pdev.as_ref(), "rtl8139rs init done!\n");
-
-        Ok(()) // TODO: will return a [`net_device`] later
+        dev_info!(pdev.as_ref(), "init done!\n");
+        Ok(Self { pdev, bar: bar_res }) // TODO: will return a [`net_device`] later
     }
 
-    fn mac(bar: &Bar0) -> [u8; 6] {
+    fn mac(&self) -> Result<MacAddress, MacGetError> {
+        let bar = self.bar.try_access().ok_or(MacGetError::BarRevoked)?;
         let mut mac = [0u8; 6];
         for i in 0..6 {
             mac[i] = bar.readb(Regs::MAC0 + i);
         }
-        mac
+        Ok(MacAddress(mac))
     }
 }
 
@@ -127,7 +146,7 @@ impl pci::Driver for Rtl8139Driver {
     const ID_TABLE: pci::IdTable<Self::IdInfo> = &PCI_TABLE;
 
     fn probe(pdev: &mut pci::Device, info: &Self::IdInfo) -> Result<Pin<KBox<Self>>> {
-        dev_dbg!(
+        dev_info!(
             pdev.as_ref(),
             "Probe Rust RTL8139 PCI driver (PCI ID: 0x{:x}, 0x{:x}).\n",
             pdev.vendor_id(),
@@ -137,27 +156,22 @@ impl pci::Driver for Rtl8139Driver {
         pdev.enable_device_mem()?;
         pdev.set_master();
 
-        let bar = pdev.iomap_region_sized::<{ Regs::END }>(0, c_str!("rust_rtl8139_driver"))?;
-
-        let drvdata = KBox::new(
-            Self {
-                pdev: pdev.clone(),
-                bar,
-            },
-            GFP_KERNEL,
-        )?;
-
-        let bar = drvdata.bar.try_access().ok_or(ENXIO)?;
+        let bar = pdev.iomap_region_sized::<{ Regs::END }>(1, c_str!("rust_rtl8139_driver"))?;
 
         // START
-        if let Err(e) = Self::init(pdev, &bar) {
-            dev_err!(pdev.as_ref(), "rtl8139rs failed to init, reason: {:?}\n", e);
-            return Err(ENXIO); // TODO: find a better error which doesn't do weird unexpected retries or anything else
-        }
-        let mac = Self::mac(&bar);
-        dev_info!(pdev.as_ref(), "rtl8139rs mac: {:?}\n", mac);
+        let drv_instance = match Self::init(pdev.clone(), bar) {
+            Ok(drv) => drv,
+            Err(e) => {
+                dev_err!(pdev.as_ref(), "failed to init, reason: {:?}\n", e);
+                return Err(ENXIO); // TODO: find a better error which doesn't do weird unexpected retries or anything else
+            }
+        };
+        let drv_instance = KBox::new(drv_instance, GFP_KERNEL)?;
 
-        Ok(drvdata.into())
+        let mac = drv_instance.mac().map_err(|_| ENXIO)?;
+        dev_info!(pdev.as_ref(), "MacAddress: tval_v0|{}\n", mac);
+
+        Ok(drv_instance.into())
     }
 }
 
