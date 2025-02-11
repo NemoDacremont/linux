@@ -157,7 +157,7 @@ impl pci::Driver for Rtl8139Driver {
         let drv_instance = KBox::new(drv_instance, GFP_KERNEL)?;
 
         let mac = drv_instance.mac().map_err(|_| ENXIO)?;
-        dev_info!(pdev.as_ref(), "rtl8139rs mac: {:x?}\n", mac);
+        dev_info!(pdev.as_ref(), "rtl8139rs tval_v0|{:x?}\n", mac);
 
         Ok(drv_instance.into())
     }
