@@ -10,4 +10,4 @@ Welcome to Micro Linux!
 Boot took $(cut -d' ' -f1 /proc/uptime) seconds
 
 !
-exec /bin/sh
+exec /bin/sh $@
