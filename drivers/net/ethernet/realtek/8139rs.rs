@@ -4,8 +4,8 @@
 //!
 //! To make this driver probe, QEMU must be run with `-netdev user,id=mynet0 -device rtl8139,netdev=mynet0`.
 
-use core::hint::black_box;
-use kernel::{bindings, c_str, devres::Devres, pci, prelude::*};
+use core::{fmt, hint::black_box};
+use kernel::{c_str, devres::Devres, pci, prelude::*};
 
 struct Regs;
 
@@ -81,6 +81,18 @@ enum MacGetError {
     BarRevoked,
 }
 
+struct MacAddress([u8; 6]);
+
+impl fmt::Display for MacAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
+        )
+    }
+}
+
 /// hacky sleep() implemented by busy looping (kernel crate doesn't expose [`usleep()`])
 fn sleep(amount: usize) {
     black_box({
@@ -114,17 +126,17 @@ impl Rtl8139Driver {
             return Err(InitError::SoftwareResetStuck);
         }
 
-        dev_info!(pdev.as_ref(), "rtl8139rs init done!\n");
+        dev_info!(pdev.as_ref(), "init done!\n");
         Ok(Self { pdev, bar: bar_res }) // TODO: will return a [`net_device`] later
     }
 
-    fn mac(&self) -> Result<[u8; 6], MacGetError> {
+    fn mac(&self) -> Result<MacAddress, MacGetError> {
         let bar = self.bar.try_access().ok_or(MacGetError::BarRevoked)?;
         let mut mac = [0u8; 6];
         for i in 0..6 {
             mac[i] = bar.readb(Regs::MAC0 + i);
         }
-        Ok(mac)
+        Ok(MacAddress(mac))
     }
 }
 
@@ -150,14 +162,14 @@ impl pci::Driver for Rtl8139Driver {
         let drv_instance = match Self::init(pdev.clone(), bar) {
             Ok(drv) => drv,
             Err(e) => {
-                dev_err!(pdev.as_ref(), "rtl8139rs failed to init, reason: {:?}\n", e);
+                dev_err!(pdev.as_ref(), "failed to init, reason: {:?}\n", e);
                 return Err(ENXIO); // TODO: find a better error which doesn't do weird unexpected retries or anything else
             }
         };
         let drv_instance = KBox::new(drv_instance, GFP_KERNEL)?;
 
         let mac = drv_instance.mac().map_err(|_| ENXIO)?;
-        dev_info!(pdev.as_ref(), "rtl8139rs tval_v0|{:x?}\n", mac);
+        dev_info!(pdev.as_ref(), "MacAddress: tval_v0|{}\n", mac);
 
         Ok(drv_instance.into())
     }
