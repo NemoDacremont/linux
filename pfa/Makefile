@@ -35,7 +35,7 @@ ifeq ($(UNAME_S),Darwin)
 	# Prefix of gcc and ar on macos
 	CROSS_COMPILE=x86_64-linux-musl-
 	# Because there is already musl in the prefix, it's juste gcc
-	MUSL-GCC=gcc
+	MUSL-GCC=x86_64-linux-musl-gcc
 endif
 
 # If on linux, find the right distro to define DEP_CMD
