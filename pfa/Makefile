@@ -1,5 +1,7 @@
 BUILD_DIR?=build
 LINUX_PATH?=..
+MK_PATH?=mk
+
 MAC_ADDRESS=de:ad:be:ef:ca:fe
 QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
 	   -initrd build/initramfs.cpio.gz \
@@ -20,22 +22,33 @@ tval_v0_QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
 	   -device rtl8139,netdev=mynet0,mac=${MAC_ADDRESS}
 
 
-OS=$(shell grep '^NAME=' /etc/os-release | tr -d '"' | sed 's/^NAME=//')
+UNAME_S := $(shell uname -s)
 
-REQ_CMD=musl-gcc wget xz gzip gcc make git flex bison cpio xz bzip2 bc qemu-system-x86_64
-REQ_LIB=libxml2 libelf-dev libssl-dev
+REQ_LIB := libxml2 libelf-dev libssl-dev
 
 REQ_CMD_TARGETS=$(addprefix check_dep_,${REQ_CMD})
 
-ifeq ("${OS}", "Ubuntu")
-	DEP_CMD="apt install git make musl musl-tools wget gcc xz-utils bzip2 cpio flex bison libxml2 libelf-dev bc libssl-dev"
-else ifeq ("${OS}", "Pop!_OS")
-	DEP_CMD="apt install git make musl musl-tools wget gcc xz-utils bzip2 cpio flex bison libxml2 libelf-dev bc libssl-dev"
-else ifeq ("${OS}", "Arch Linux")
-	DEP_CMD="pacman -S musl wget gcc git make xz bzip2 cpio flex bison libxml2 libelf bc openssl"
-else
-	DEP_CMD="Unknown OS, needed cmd and libs : ${REQ_CMD} ${REQ_LIB}"
+# On macos, some executable names are different
+ifeq ($(UNAME_S),Darwin)
+	REQ_CMD=x86_64-linux-musl-gcc wget xz gzip gcc make git flex bison cpio xz bzip2 bc qemu-system-x86_64
+	DEP_CMD="Macos, needed cmd and libs : ${REQ_CMD} ${REQ_LIB}"
+	CROSS_COMPILE=x86_64-linux-
 endif
+
+# If on linux, find the right distro to define DEP_CMD
+ifeq ($(UNAME_S),Linux)
+	OS=$(shell grep '^NAME=' /etc/os-release | tr -d '"' | sed 's/^NAME=//')
+	ifeq ("${OS}", "Ubuntu")
+		DEP_CMD="apt install git make musl musl-tools wget gcc xz-utils bzip2 cpio flex bison libxml2 libelf-dev bc libssl-dev"
+	else ifeq ("${OS}", "Pop!_OS")
+		DEP_CMD="apt install git make musl musl-tools wget gcc xz-utils bzip2 cpio flex bison libxml2 libelf-dev bc libssl-dev"
+	else ifeq ("${OS}", "Arch Linux")
+		DEP_CMD="pacman -S musl wget gcc git make xz bzip2 cpio flex bison libxml2 libelf bc openssl"
+	else
+		DEP_CMD="Unknown OS, needed cmd and libs : ${REQ_CMD} ${REQ_LIB}"
+	endif
+endif
+
 
 
 include mk/*.mk

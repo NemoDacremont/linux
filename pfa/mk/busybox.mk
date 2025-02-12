@@ -1,4 +1,7 @@
-BUILD_DIR?=build
+BUILD_DIR?=../build
+CROSS_COMPILE ?= 
+
+BUSYBOX_FLAGS+=ARCH=x86_64 CROSS_COMPILE="${CROSS_COMPILE}" CC=musl-gcc CFLAGS="-Ilinux-headers-4.19.88-2/x86/include"
 
 # prevent execution of busybox_all on include
 all:
@@ -20,7 +23,7 @@ ${BUILD_DIR}/busybox-1_36_0: ${BUILD_DIR}/1_36_0.tar.gz
 	touch $@
 
 ${BUILD_DIR}/busybox-1_36_0/.config:
-	make defconfig  -C ${BUILD_DIR}/busybox-1_36_0 || (rm $@; exit 1)
+	make defconfig ${BUSYBOX_FLAGS} -C ${BUILD_DIR}/busybox-1_36_0 || (rm $@; exit 1)
 	sed -i 's/CONFIG_TC=y/CONFIG_TC=n/' $@
 	echo 'CONFIG_STATIC=y' >> ${BUILD_DIR}/busybox-1_36_0/.config
 
@@ -29,6 +32,6 @@ ${BUILD_DIR}/busybox-1_36_0/linux-headers-4.19.88-2: ${BUILD_DIR}/busybox-1_36_0
 	touch $@
 
 ${BUILD_DIR}/busybox-1_36_0/_install: ${BUILD_DIR}/busybox-1_36_0 ${BUILD_DIR}/busybox-1_36_0/.config ${BUILD_DIR}/busybox-1_36_0/linux-headers-4.19.88-2
-	make install -C ${BUILD_DIR}/busybox-1_36_0 CC=musl-gcc CFLAGS="-Ilinux-headers-4.19.88-2/x86/include" -j$(shell nproc)
+	make install ${BUSYBOX_FLAGS} -C ${BUILD_DIR}/busybox-1_36_0 -j$(shell nproc)
 
 .PHONY: busybox_all all
