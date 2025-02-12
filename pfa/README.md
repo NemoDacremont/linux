@@ -38,16 +38,16 @@ make rstart
 
 ## Étapes de la compilation
 
-1. Compilation statique de `busybox` pour une architecture x86
-2. Création d'un système de fichier en RAM `initramfs`, ayant un script `/init`
-faisant appel aux exécutables de `busybox`
+1. Compilation statique de `busybox` pour une architecture x86.
+2. Création d'un système de fichiers en RAM `initramfs`, ayant un script `/init`
+faisant appel aux exécutables de `busybox`.
 3. Compilation du kernel Linux en utilisant les bons drivers à l'aide de
-configurations fixées
+configurations fixées.
 
 ## Tests
 
 Différents tests peuvent être effectués : tests de validations et tests de
-formatage
+formatage.
 
 ### Tests de formatage
 
