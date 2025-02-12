@@ -1,7 +1,7 @@
 BUILD_DIR?=../build
 CROSS_COMPILE ?= 
 
-BUSYBOX_FLAGS+=ARCH=x86_64 CROSS_COMPILE="${CROSS_COMPILE}" CC=musl-gcc CFLAGS="-Ilinux-headers-4.19.88-2/x86/include"
+BUSYBOX_FLAGS+=ARCH=x86_64 CROSS_COMPILE="${CROSS_COMPILE}" CC=$(MUSL-GCC) CFLAGS="-Ilinux-headers-4.19.88-2/x86/include"
 
 # prevent execution of busybox_all on include
 all:

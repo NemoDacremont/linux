@@ -32,12 +32,18 @@ REQ_CMD_TARGETS=$(addprefix check_dep_,${REQ_CMD})
 ifeq ($(UNAME_S),Darwin)
 	REQ_CMD=x86_64-linux-musl-gcc wget xz gzip gcc make git flex bison cpio xz bzip2 bc qemu-system-x86_64
 	DEP_CMD="Macos, needed cmd and libs : ${REQ_CMD} ${REQ_LIB}"
-	CROSS_COMPILE=x86_64-linux-
+	# Prefix of gcc and ar on macos
+	CROSS_COMPILE=x86_64-linux-musl-
+	# Because there is already musl in the prefix, it's juste gcc
+	MUSL-GCC=gcc
 endif
 
 # If on linux, find the right distro to define DEP_CMD
 ifeq ($(UNAME_S),Linux)
 	OS=$(shell grep '^NAME=' /etc/os-release | tr -d '"' | sed 's/^NAME=//')
+	# Required for busybox
+	MUSL-GCC=musl-gcc
+
 	ifeq ("${OS}", "Ubuntu")
 		DEP_CMD="apt install git make musl musl-tools wget gcc xz-utils bzip2 cpio flex bison libxml2 libelf-dev bc libssl-dev"
 	else ifeq ("${OS}", "Pop!_OS")
@@ -48,7 +54,6 @@ ifeq ($(UNAME_S),Linux)
 		DEP_CMD="Unknown OS, needed cmd and libs : ${REQ_CMD} ${REQ_LIB}"
 	endif
 endif
-
 
 
 include mk/*.mk
