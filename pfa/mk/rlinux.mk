@@ -14,7 +14,7 @@
 #
 BUILD_DIR?=build
 # Path to linux submodule
-LINUX_PATH?=..
+LINUX_PATH?=../..
 
 # Env var using path after uncompressing tar archive
 LLVM=llvm-19.1.7-rust-1.84.0-x86_64
@@ -28,13 +28,18 @@ libclang_path=${llvm_prefix}/lib/libclang.so
 # prevent execution of initramfs_all on include
 all:
 
-rlinux_all: linux_rustavailable ${LINUX_PATH}/vmlinux
+rlinux_all: rlinux_rustavailable rlinux_config ${LINUX_PATH}/vmlinux
+
+rlinux_config:
+	cp mk/rconfig ${LINUX_PATH}/.config
 
 rlinux_rustavailable: ${BUILD_DIR}/.bindgen.installed
+	# PATH=${build_path} LIBCLANG_PATH=${libclang_path}
+	# LIBCLANG_PATH=${libclang_path}
 	PATH=${build_path} LIBCLANG_PATH=${libclang_path} make -C ${LINUX_PATH} LLVM=1 rustavailable
 
 # llvm-rust lock file
-${BUILD_DIR}/.bindgen.installed: ${BUILD_DIR}/${LLVM_TAR}
+${BUILD_DIR}/.bindgen.installed: ${BUILD_DIR}/${LLVM}
 	PATH=${build_path} LIBCLANG_PATH=${libclang_path} cargo install --locked --root ${llvm_prefix} --version $(shell ${LINUX_PATH}/scripts/min-tool-version.sh bindgen) bindgen-cli
 	touch $@
 
@@ -49,16 +54,8 @@ ${BUILD_DIR}/${LLVM}: ${BUILD_DIR}/${LLVM_TAR}
 	tar -xf $< -C $(dir $@)
 	touch $@
 
-# Make linux config
-${LINUX_PATH}/.config:
-	@# make defconfig
-	PATH=${build_path} LIBCLANG_PATH=${libclang_path} make -C ${LINUX_PATH} LLVM=1 defconfig
-	@# Additional configuration flag
-	sed -i 's/.*8139.*///' $@
-	echo 'CONFIG_8139C=y'
-
 # Build linux
-${LINUX_PATH}/vmlinux: ${BUILD_DIR}/.bindgen.installed ${LINUX_PATH}/.config
+${LINUX_PATH}/vmlinux: ${BUILD_DIR}/.bindgen.installed 
 	yes "" | PATH=${build_path} LIBCLANG_PATH=${libclang_path} make -C ${LINUX_PATH} LLVM=1 -j$(shell nproc)
 
-.phony: all rlinux_all rlinux_rustavailable
+.PHONY: all rlinux_all rlinux_rustavailable rlinux_config
