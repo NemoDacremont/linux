@@ -46,7 +46,7 @@ configurations fixées.
 
 ## Tests
 
-Différents tests peuvent être effectués : tests de validations et tests de
+Différents tests peuvent être effectués : tests de validation et tests de
 formatage.
 
 ### Tests de formatage
