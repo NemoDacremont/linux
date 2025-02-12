@@ -57,12 +57,17 @@ static void rtl8139c_print_mac_address(struct rtl8139c_priv *drv_priv)
 		drv_priv->mac_address[5]);
 }
 
+/**
+ * Reset network card.
+ * @param drv_priv private driver's data
+ * @return zero if failed positive either
+ */
 static int rtl8139c_reset(struct rtl8139c_priv *drv_priv)
 {
 	writeb(CmdReset, drv_priv->hwmem + ChipCmd);
 	int i = 1000;
 	while (--i) {
-		if (readb(drv_priv->hwmem + ChipCmd) & CmdReset) {
+		if ((readb(drv_priv->hwmem + ChipCmd) & CmdReset) == 0) {
 			break;
 		}
 		udelay(10);
@@ -109,8 +114,8 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	// reset the RTL8139
 	err = rtl8139c_reset(drv_priv);
-	if (err) {
-		pr_err("RTL8139c reset failed\n");
+	if (err == 0) {
+		pr_err("\b[RTL8139c] reset failed\n");
 		pci_disable_device(pdev);
 		return err;
 	}
@@ -132,19 +137,19 @@ static void rtl8139c_remove(struct pci_dev *pdev)
 		iounmap(drv_priv->hwmem);
 		kfree(drv_priv);
 	}
-	pr_info("RTL8139c removed\n");
+	pr_info("\b[RTL8139c] removed\n");
 }
 
 // Can throw warns, but it's not a problem
 static int __maybe_unused rtl8139c_resume(struct device *device)
 {
-	pr_info("RTL8139c resume\n");
+	pr_info("\b[RTL8139c] resume\n");
 	return 0;
 }
 
 static int __maybe_unused rtl8139c_suspend(struct device *device)
 {
-	pr_info("RTL8139c suspend\n");
+	pr_info("\b[RTL8139c] suspend\n");
 	return 0;
 }
 
