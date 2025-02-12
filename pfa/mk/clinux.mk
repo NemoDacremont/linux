@@ -24,4 +24,4 @@ clinux_all: clinux_config
 clinux_config:
 	cp mk/cconfig ${LINUX_PATH}/.config
 
-.phony: all linux_all clinux_config
+.PHONY: all linux_all clinux_config

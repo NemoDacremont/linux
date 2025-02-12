@@ -16,4 +16,4 @@ c_format:
 c_testformat:
 	clang-format ${CLANG_FLAGS} ${CLANG_TEST_FLAGS} ${C_FILES} 2>/dev/null
 
-.phony: all c_format c_testformat
+.PHONY: all c_format c_testformat

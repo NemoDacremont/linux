@@ -18,4 +18,4 @@ ${BUILD_DIR}/initramfs/init: mk/init.sh ${BUILD_DIR}/initramfs  # make sure inir
 ${BUILD_DIR}/initramfs.cpio.gz: ${BUILD_DIR}/initramfs ${BUILD_DIR}/initramfs/init
 	(cd $< && find . -print0 | cpio --null -ov --format=newc | gzip -9) > $@
 
-.phony: initramfs_all all
+.PHONY: initramfs_all all
