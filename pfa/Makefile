@@ -55,22 +55,30 @@ include mk/*.mk
 
 all: build
 
+# Check if deps are installed and download and compile busybox and initramfs
+prebuild: check_deps busybox_all initramfs_all
+
 build: rbuild
 
-rbuild: check_deps busybox_all rlinux_all initramfs_all
+rbuild: prebuild  rlinux_all 
 
-cbuild: check_deps busybox_all clinux_all initramfs_all
+cbuild: prebuild clinux_all 
 
-rstart:  check_deps rbuild
+rstart: rbuild
 	qemu-system-x86_64 ${QEMUFLAGS}
 
-cstart:  check_deps cbuild
+cstart: cbuild
 	qemu-system-x86_64 ${QEMUFLAGS}
 
-tval_v0:  check_deps cbuild
+rtval_v0: rbuild
 	(qemu-system-x86_64 ${tval_v0_QEMUFLAGS} | grep "tval_v0|${MAC_ADDRESS}" 2>/dev/null >/dev/null) \
 		|| (echo "Couldn't find the tag 'tval_v0|${MAC_ADDRESS}' in kernel logs"; exit 1)
 
+ctval_v0: cbuild
+	(qemu-system-x86_64 ${tval_v0_QEMUFLAGS} | grep "tval_v0|${MAC_ADDRESS}" 2>/dev/null >/dev/null) \
+		|| (echo "Couldn't find the tag 'tval_v0|${MAC_ADDRESS}' in kernel logs"; exit 1)
+
+# Check if all dependencies are installed, recommand to use ${DEP_CMD} otherwise
 check_deps: ${REQ_CMD_TARGETS}
 
 # Test if % is installed, recommand to use ${DEP_CMD} otherwise
@@ -86,4 +94,12 @@ format: c_format
 clean:
 	${RM} -r build
 
-.PHONY: all build clean check_deps test_format format ${REQ_CMD_TARGETS}
+.PHONY: all \
+	build \
+	clean \
+	check_deps \
+	test_format \
+	format \
+	${REQ_CMD_TARGETS} \
+	ctval_v0 \
+	rtval_v0
