@@ -1,4 +1,4 @@
-LINUX_PATH?=..
+LINUX_PATH?=../..
 
 # flags passed to `make rustfmt[check]` linux target 
 RUST_FMT_FLAGS+=CLIPPY=1

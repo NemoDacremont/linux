@@ -12,9 +12,10 @@
 
 
 #
-BUILD_DIR?=build
+BUILD_DIR?=../build
 # Path to linux submodule
 LINUX_PATH?=../..
+MK_PATH?=.
 
 # Env var using path after uncompressing tar archive
 LLVM=llvm-19.1.7-rust-1.84.0-x86_64
@@ -31,7 +32,7 @@ all:
 rlinux_all: rlinux_rustavailable rlinux_config ${LINUX_PATH}/vmlinux
 
 rlinux_config:
-	cp mk/rconfig ${LINUX_PATH}/.config
+	cp ${MK_PATH}/rconfig ${LINUX_PATH}/.config
 
 rlinux_rustavailable: ${BUILD_DIR}/.bindgen.installed
 	# PATH=${build_path} LIBCLANG_PATH=${libclang_path}

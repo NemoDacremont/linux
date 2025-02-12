@@ -1,4 +1,4 @@
-BUILD_DIR?=build
+BUILD_DIR?=../build
 
 # prevent execution of initramfs_all on include
 all:

@@ -1,4 +1,4 @@
-LINUX_PATH?=..
+LINUX_PATH?=../..
 C_FILES+=${LINUX_PATH}/drivers/net/ethernet/realtek/8139c.c
 
 # flags for format and test

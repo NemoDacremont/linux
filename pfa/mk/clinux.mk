@@ -12,9 +12,10 @@
 
 
 #
-BUILD_DIR?=build
+BUILD_DIR?=../build
 # Path to linux submodule
-LINUX_PATH?=..
+LINUX_PATH?=../..
+MK_PATH?=.
 
 all: clinux_all
 
@@ -22,6 +23,6 @@ clinux_all: clinux_config
 	yes "" | make -C ${LINUX_PATH} -j$(shell nproc)
 
 clinux_config:
-	cp mk/cconfig ${LINUX_PATH}/.config
+	cp ${MK_PATH}/cconfig ${LINUX_PATH}/.config
 
 .PHONY: all linux_all clinux_config
