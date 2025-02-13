@@ -13,7 +13,7 @@ QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
 	   -device rtl8139,netdev=mynet0,mac=${MAC_ADDRESS}
 
 tval_v0_QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
-	   -initrd ${BIULD_DIR}/initramfs.cpio.gz \
+	   -initrd ${BUILD_DIR}/initramfs.cpio.gz \
 	   -no-reboot \
 	   -nographic \
 	   -append "console=ttyS0 panic=-1 loglevel=15 init='/init -c /sbin/poweroff -f'" \
