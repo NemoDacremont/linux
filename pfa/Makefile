@@ -26,8 +26,6 @@ UNAME_S := $(shell uname -s)
 
 REQ_LIB := libxml2 libelf-dev libssl-dev
 
-REQ_CMD_TARGETS=$(addprefix check_dep_,${REQ_CMD})
-
 # On macos, some executable names are different
 ifeq ($(UNAME_S),Darwin)
 	REQ_CMD=x86_64-linux-musl-gcc wget xz gzip gcc make git flex bison cpio xz bzip2 bc qemu-system-x86_64
@@ -54,6 +52,8 @@ ifeq ($(UNAME_S),Linux)
 		DEP_CMD="Unknown OS, needed cmd and libs : ${REQ_CMD} ${REQ_LIB}"
 	endif
 endif
+
+REQ_CMD_TARGETS=$(addprefix check_dep_,${REQ_CMD})
 
 
 include mk/*.mk
