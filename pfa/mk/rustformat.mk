@@ -1,9 +1,14 @@
+#
+## Targets to abstract rust for linux's formatting rules
+#
+
 LINUX_PATH?=../..
 
 # flags passed to `make rustfmt[check]` linux target 
 RUST_FMT_FLAGS+=CLIPPY=1
 
-all: rust_testformat
+# Prevent default target call on include
+all:
 
 # format all rust code
 rust_format:
@@ -13,4 +18,4 @@ rust_format:
 rust_testformat:
 	make -C ${LINUX_PATH} ${RUST_FMT_FLAGS} rustfmtcheck
 
-.phony: all rust_format rust_testformat
+.PHONY: all rust_format rust_testformat

@@ -63,22 +63,29 @@ all: build
 # Check if deps are installed and download and compile busybox and initramfs
 prebuild: check_deps busybox_all initramfs_all
 
+# Default build : build rust
 build: rbuild
 
+# Build rust driver
 rbuild: prebuild  rlinux_all 
 
+# Build C driver
 cbuild: prebuild clinux_all 
 
+# Starts qemu with the kernel built with the rust driver
 rstart: rbuild
 	qemu-system-x86_64 ${QEMUFLAGS}
 
+# Starts qemu with the kernel built with the C driver
 cstart: cbuild
 	qemu-system-x86_64 ${QEMUFLAGS}
 
+# Validation test for v0 of the rust driver
 rtval_v0: rbuild
 	(qemu-system-x86_64 ${tval_v0_QEMUFLAGS} | grep "tval_v0|${MAC_ADDRESS}" 2>/dev/null >/dev/null) \
 		|| (echo "Couldn't find the tag 'tval_v0|${MAC_ADDRESS}' in kernel logs"; exit 1)
 
+# Validation test for v0 of the C driver
 ctval_v0: cbuild
 	(qemu-system-x86_64 ${tval_v0_QEMUFLAGS} | grep "tval_v0|${MAC_ADDRESS}" 2>/dev/null >/dev/null) \
 		|| (echo "Couldn't find the tag 'tval_v0|${MAC_ADDRESS}' in kernel logs"; exit 1)
@@ -91,10 +98,10 @@ check_dep_%:
 	@which $* 2>&1 > /dev/null || (echo -e "\n(ERROR) couldn\'t find $*, considere installing all dependencies with : \n${DEP_CMD}\n" 1>&2 ; exit 1)
 
 # Test if all driver files are formatted
-test_format: c_testformat
+test_format: c_testformat rust_testformat
 
 # Format all driver files
-format: c_format
+format: c_format rust_format
 
 clean:
 	${RM} -r build
