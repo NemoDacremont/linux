@@ -18,7 +18,7 @@ MK_PATH?=.
 include ${MK_PATH}/llvm.mk
 
 # Build using LLVM for compatibility with macos and reproductibility
-LINUX_FLAGS+=LLVM=1 \
+CLINUX_FLAGS+=LLVM=1 \
 	     PATH=${build_path} \
 	     LIBCLANG_PATH=${libclang_path} \
 	     -j$(shell nproc)
@@ -36,7 +36,7 @@ clinux_all: clinux_build
 # NB: the hack of using yes "" is to use the default config that may be offered
 # by Linux Kernel's Makefile
 clinux_build: llvm_install clinux_config
-	yes "" | make bzImage -C ${LINUX_PATH} ${LINUX_FLAGS}
+	yes "" | make bzImage -C ${LINUX_PATH} ${CLINUX_FLAGS}
 
 # Force the use of the Kernel config "cconfig"
 clinux_config:

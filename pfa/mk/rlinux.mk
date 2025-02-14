@@ -17,7 +17,7 @@ MK_PATH?=.
 include ${MK_PATH}/llvm.mk
 
 # Build using LLVM is required for rust
-LINUX_FLAGS+=LLVM=1 \
+RLINUX_FLAGS+=LLVM=1 \
 	     PATH=${build_path} \
 	     LIBCLANG_PATH=${libclang_path} \
 	     -j$(shell nproc)
@@ -35,11 +35,11 @@ rlinux_all: rlinux_build
 # NB: the hack of using yes "" is to use the default config that may be offered
 # by Linux Kernel's Makefile
 rlinux_build: llvm_install rlinux_rustavailable rlinux_config
-	yes "" | make bzImage -C ${LINUX_PATH} ${LINUX_FLAGS}
+	yes "" | make bzImage -C ${LINUX_PATH} ${RLINUX_FLAGS}
 
 # To test if rust is available (and that everything is working)
 rlinux_rustavailable: llvm_install
-	make rustavailable -C ${LINUX_PATH} ${LINUX_FLAGS}
+	make rustavailable -C ${LINUX_PATH} ${RLINUX_FLAGS}
 
 # Force the use of the kernel config "rconfig"
 rlinux_config:
