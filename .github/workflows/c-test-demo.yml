@@ -1,9 +1,6 @@
 name: C tests
 
 on: 
-  pull_request:
-    paths:
-      - 'drivers/**/*.[ch]'
   workflow_dispatch:
 
 jobs:
