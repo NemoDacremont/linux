@@ -1,9 +1,10 @@
-name: C/C++ CI
+name: C tests
 
 on: 
   pull_request:
     paths:
       - 'drivers/**/*.[ch]'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,3 +14,5 @@ jobs:
     - uses: actions/checkout@v4
     - name: Test code formatting
       run: make -C pfa test_format
+    - name: Validation test of v0
+      run: make -C pfa ctval_v0
