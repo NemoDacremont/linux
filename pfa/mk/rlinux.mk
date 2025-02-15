@@ -1,15 +1,11 @@
 #
 ## Build process
 #
-# 1.check rust available
-#	1. Download llvm-rust if the lock file .bindgen.installed isn't here
-# 2. Create linux make config
-#	1. Execute defconfig for default
-#	2. Add required flags to compile with rust and samples
-# 3. Build linux (target vmlinux)
+# 1. Instal LLVM
+# 1. Check rust available (to make sure everything goes as expected)
+# 2. Copy rconfig linux config (a minimal config for qemu using our rust driver)
+# 3. Build linux (target bzImage for x86)
 #
-#
-
 
 #
 BUILD_DIR?=../build
@@ -17,46 +13,36 @@ BUILD_DIR?=../build
 LINUX_PATH?=../..
 MK_PATH?=.
 
-# Env var using path after uncompressing tar archive
-LLVM=llvm-19.1.7-rust-1.84.0-x86_64
+# Requires to install llvm, using a fixed version from llvm.mk
+include ${MK_PATH}/llvm.mk
 
-LLVM_TAR=${LLVM}.tar.gz
-LLVM_TAR_URL_PREFIX=https://mirrors.edge.kernel.org/pub/tools/llvm/rust/files
-llvm_prefix=${PWD}/${BUILD_DIR}/${LLVM}
-build_path=${llvm_prefix}/bin:${PATH}
-libclang_path=${llvm_prefix}/lib/libclang.so
+# Build using LLVM is required for rust
+RLINUX_FLAGS+=LLVM=1 \
+	     PATH=${build_path} \
+	     LIBCLANG_PATH=${libclang_path} \
+	     -j$(shell nproc)
 
-# prevent execution of initramfs_all on include
+# Prevent execution of rlinux_all on include
 all:
 
-rlinux_all: rlinux_rustavailable rlinux_config ${LINUX_PATH}/vmlinux
+# Default rlinux target
+rlinux_all: rlinux_build
 
+# Build x86 Linux Kernel
+# This is a PHONY target because the need to compile files is delegated to 
+# Linux Kernel's Makefile
+#
+# NB: the hack of using yes "" is to use the default config that may be offered
+# by Linux Kernel's Makefile
+rlinux_build: llvm_install rlinux_rustavailable rlinux_config
+	yes "" | make bzImage -C ${LINUX_PATH} ${RLINUX_FLAGS}
+
+# To test if rust is available (and that everything is working)
+rlinux_rustavailable: llvm_install
+	make rustavailable -C ${LINUX_PATH} ${RLINUX_FLAGS}
+
+# Force the use of the kernel config "rconfig"
 rlinux_config:
 	cp ${MK_PATH}/rconfig ${LINUX_PATH}/.config
 
-rlinux_rustavailable: ${BUILD_DIR}/.bindgen.installed
-	# PATH=${build_path} LIBCLANG_PATH=${libclang_path}
-	# LIBCLANG_PATH=${libclang_path}
-	PATH=${build_path} LIBCLANG_PATH=${libclang_path} make -C ${LINUX_PATH} LLVM=1 rustavailable
-
-# llvm-rust lock file
-${BUILD_DIR}/.bindgen.installed: ${BUILD_DIR}/${LLVM}
-	PATH=${build_path} LIBCLANG_PATH=${libclang_path} cargo install --locked --root ${llvm_prefix} --version $(shell ${LINUX_PATH}/scripts/min-tool-version.sh bindgen) bindgen-cli
-	touch $@
-
-# Download the tar of llvm-rust
-${BUILD_DIR}/${LLVM_TAR}:
-	mkdir -p $(dir $@)
-	wget -O "$@" ${LLVM_TAR_URL_PREFIX}/${LLVM_TAR}
-	[ -f "$@" ] || (echo -E '(ERROR) wget failed, check your connexion' 1>&2 ; exit 1)
-
-# Extract the tar of llvm-rust
-${BUILD_DIR}/${LLVM}: ${BUILD_DIR}/${LLVM_TAR}
-	tar -xf $< -C $(dir $@)
-	touch $@
-
-# Build linux
-${LINUX_PATH}/vmlinux: ${BUILD_DIR}/.bindgen.installed 
-	yes "" | PATH=${build_path} LIBCLANG_PATH=${libclang_path} make -C ${LINUX_PATH} LLVM=1 -j$(shell nproc)
-
-.PHONY: all rlinux_all rlinux_rustavailable rlinux_config
+.PHONY: all rlinux_all rlinux_rustavailable rlinux_config rlinux_build
