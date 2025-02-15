@@ -10,7 +10,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Install musl-gcc
-      run: musl musl-tools
+      run: apt install musl musl-tools
     - name: Test code formatting
       run: make -C pfa test_format
     - name: Validation test of v0
