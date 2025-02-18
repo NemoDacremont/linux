@@ -26,6 +26,7 @@ endif
 
 # Build using LLVM is required for rust
 CLINUX_FLAGS+=LLVM=1 \
+	      ARCH=x86 \
 	      ${path_flags} \
 	     -j$(shell nproc)
 
