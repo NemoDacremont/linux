@@ -17,10 +17,16 @@ MK_PATH?=.
 # version from llvm.mk
 include ${MK_PATH}/llvm.mk
 
-# Build using LLVM for compatibility with macos and reproductibility
+ifeq ($(UNAME_S),Darwin)
+	path_flags:=""
+else ifeq ($(UNAME_S),Linux)
+	path_flags:=PATH=${build_path} \
+		   LIBCLANG_PATH=${libclang_path}
+endif
+
+# Build using LLVM is required for rust
 CLINUX_FLAGS+=LLVM=1 \
-	     PATH=${build_path} \
-	     LIBCLANG_PATH=${libclang_path} \
+	      ${path_flags} \
 	     -j$(shell nproc)
 
 # Prevent execution of clinux_all on include
