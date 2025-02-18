@@ -11,6 +11,7 @@
 
 # guard to prevent several includes
 ifndef _LLVM_MK_
+UNAME_S ?= $(shell uname -s)
 _LLVM_MK_:="defined"
 
 # Env var using path after uncompressing tar archive
@@ -26,23 +27,23 @@ libclang_path=${llvm_prefix}/lib/libclang.so
 all:
 
 ifeq ($(UNAME_S),Darwin)
-	llvm_all:
+llvm_all:
 else ifeq ($(UNAME_S),Linux)
-	llvm_all: llvm_install
+llvm_all: llvm_install
 endif
 
 
 ifeq ($(UNAME_S),Darwin)
-	llvm_install:
+llvm_install:
 else ifeq ($(UNAME_S),Linux)
-	llvm_install: llvm_download llvm_install_bindgen
+llvm_install: llvm_download llvm_install_bindgen
 endif
 
 
 ifeq ($(UNAME_S),Darwin)
-	llvm_download:
+llvm_download:
 else ifeq ($(UNAME_S),Linux)
-	llvm_download: ${BUILD_DIR}/${LLVM}
+llvm_download: ${BUILD_DIR}/${LLVM}
 endif
 
 # Begin of targets for llvm_download 
