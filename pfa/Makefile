@@ -44,11 +44,11 @@ ifeq ($(UNAME_S),Linux)
 	MUSL-GCC=musl-gcc
 
 	ifeq ("${OS}", "Ubuntu")
-		DEP_CMD="apt install git make musl musl-tools wget gcc xz-utils bzip2 cpio flex bison libxml2 libelf-dev bc libssl-dev"
+		DEP_CMD="apt install git make musl musl-tools wget gcc xz-utils bzip2 cpio flex bison libxml2 libelf-dev bc libssl-dev qemu-system"
 	else ifeq ("${OS}", "Pop!_OS")
-		DEP_CMD="apt install git make musl musl-tools wget gcc xz-utils bzip2 cpio flex bison libxml2 libelf-dev bc libssl-dev"
+		DEP_CMD="apt install git make musl musl-tools wget gcc xz-utils bzip2 cpio flex bison libxml2 libelf-dev bc libssl-dev qemu-system"
 	else ifeq ("${OS}", "Arch Linux")
-		DEP_CMD="pacman -S musl wget gcc git make xz bzip2 cpio flex bison libxml2 libelf bc openssl"
+		DEP_CMD="pacman -S musl wget gcc git make xz bzip2 cpio flex bison libxml2 libelf bc openssl qemu-system-x86"
 	else
 		DEP_CMD="Unknown OS, needed cmd and libs : ${REQ_CMD} ${REQ_LIB}"
 	endif
