@@ -78,11 +78,11 @@ static int rtl8139c_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
  * Operations with the interface
  */
 static const struct net_device_ops rtl8139c_netdev_ops = {
-	.ndo_init               = rtl8139c_dev_init,
-	.ndo_open		= rtl8139c_open,
-	.ndo_stop		= rtl8139c_close,
-	.ndo_do_ioctl           = rtl8139c_ioctl,
-	.ndo_validate_addr	= eth_validate_addr,
+	.ndo_init = rtl8139c_dev_init,
+	.ndo_open = rtl8139c_open,
+	.ndo_stop = rtl8139c_close,
+	.ndo_do_ioctl = rtl8139c_ioctl,
+	.ndo_validate_addr = eth_validate_addr,
 };
 
 struct rtl8139c_priv {
@@ -137,7 +137,7 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	priv = netdev_priv(dev);
 	priv->pdev = pdev;
 	priv->dev = dev;
-	
+
 	// enable pci device
 	int err = pci_enable_device_mem(pdev);
 	// enable bus mastering
@@ -177,7 +177,7 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	// Get MAC address
 	for (int i = 0; i < 6; i++) {
-	        priv->mac_address[i] = readb(priv->hwmem + MAC0 + i);
+		priv->mac_address[i] = readb(priv->hwmem + MAC0 + i);
 	}
 
 	rtl8139c_print_mac_address(priv);
@@ -185,7 +185,7 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	// https://stackoverflow.com/q/6726939
 	dev->netdev_ops = &rtl8139c_netdev_ops;
 	eth_hw_addr_set(dev, priv->mac_address);
-	
+
 	unsigned rc = register_netdev(dev);
 	if (rc) {
 		iounmap(priv->hwmem);
