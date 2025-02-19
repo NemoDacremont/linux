@@ -16,10 +16,17 @@ MK_PATH?=.
 # Requires to install llvm, using a fixed version from llvm.mk
 include ${MK_PATH}/llvm.mk
 
+ifeq ($(UNAME_S),Darwin)
+	path_flags:=""
+else ifeq ($(UNAME_S),Linux)
+	path_flags:=PATH=${build_path} \
+		   LIBCLANG_PATH=${libclang_path}
+endif
+
 # Build using LLVM is required for rust
 RLINUX_FLAGS+=LLVM=1 \
-	     PATH=${build_path} \
-	     LIBCLANG_PATH=${libclang_path} \
+	      ARCH=x86 \
+	      ${path_flags} \
 	     -j$(shell nproc)
 
 # Prevent execution of rlinux_all on include
