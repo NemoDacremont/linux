@@ -14,13 +14,13 @@ Boot took $(cut -d' ' -f1 /proc/uptime) seconds
 if [ "$1" = "tval_v0" ]
 then
 	# Force init kill to stop the vm
-	exec echo ''
+	exit 0
 elif [ "$1" = "tval_v1" ]
 then
 	# Print the machine ip adress using /sbin/ip
 	echo "ctval_v1|`/sbin/ip addr show eth0 | grep -oE '([0-9a-z]{2}:){5}[0-9a-z]{2}' | head -n 1`";
 	# Force init kill to stop the vm
-	exec echo ''
+	exit 0
 fi
 
 
