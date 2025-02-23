@@ -16,11 +16,19 @@ tval_v0_QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
 	   -initrd ${BUILD_DIR}/initramfs.cpio.gz \
 	   -no-reboot \
 	   -nographic \
-	   -append "console=ttyS0 panic=-1 loglevel=15 init='/init -c /sbin/poweroff -f'" \
+	   -append "console=ttyS0 panic=-1 loglevel=15 init='/init tval_v0'" \
 	   -device pci-testdev \
 	   -netdev user,id=mynet0 \
 	   -device rtl8139,netdev=mynet0,mac=${MAC_ADDRESS}
 
+tval_v1_QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
+	   -initrd ${BUILD_DIR}/initramfs.cpio.gz \
+	   -no-reboot \
+	   -nographic \
+	   -append "console=ttyS0 panic=-1 loglevel=15 init='/init tval_v1" \
+	   -device pci-testdev \
+	   -netdev user,id=mynet0 \
+	   -device rtl8139,netdev=mynet0,mac=${MAC_ADDRESS}
 
 UNAME_S := $(shell uname -s)
 
@@ -83,12 +91,26 @@ cstart: cbuild
 # Validation test for v0 of the rust driver
 rtval_v0: rbuild
 	(qemu-system-x86_64 ${tval_v0_QEMUFLAGS} | grep "tval_v0|${MAC_ADDRESS}" 2>/dev/null >/dev/null) \
-		|| (echo "Couldn't find the tag 'tval_v0|${MAC_ADDRESS}' in kernel logs"; exit 1)
+		|| (echo "Couldn't find the tag 'tval_v0|${MAC_ADDRESS}' in kernel logs"; exit 1) \
+		&& echo -e "\n OK - tvalv0\n"
 
 # Validation test for v0 of the C driver
 ctval_v0: cbuild
 	(qemu-system-x86_64 ${tval_v0_QEMUFLAGS} | grep "tval_v0|${MAC_ADDRESS}" 2>/dev/null >/dev/null) \
-		|| (echo "Couldn't find the tag 'tval_v0|${MAC_ADDRESS}' in kernel logs"; exit 1)
+		|| (echo "Couldn't find the tag 'tval_v0|${MAC_ADDRESS}' in kernel logs"; exit 1) \
+		&& echo -e "\n OK - tvalv0\n"
+
+# Validation test for v1 of the rust driver
+rtval_v1: rbuild
+	(qemu-system-x86_64 ${tval_v1_QEMUFLAGS} | grep "tval_v1|${MAC_ADDRESS}" 2>/dev/null >/dev/null) \
+		|| (echo -e "\n KO - tvalv1 Couldn't find the tag 'tval_v1|${MAC_ADDRESS}' in tval_v1 logs\n"; exit 1) \
+		&& echo -e "\n OK - tvalv1\n"
+
+# Validation test for v1 of the C driver
+ctval_v1: cbuild
+	(qemu-system-x86_64 ${tval_v1_QEMUFLAGS} | grep "tval_v1|${MAC_ADDRESS}" 2>/dev/null >/dev/null) \
+		|| (echo -e "\n KO - tvalv1 Couldn't find the tag 'tval_v1|${MAC_ADDRESS}' in tval_v1 logs\n"; exit 1) \
+		&& echo -e "\n OK - tvalv1\n"
 
 # Check if all dependencies are installed, recommand to use ${DEP_CMD} otherwise
 check_deps: ${REQ_CMD_TARGETS}
