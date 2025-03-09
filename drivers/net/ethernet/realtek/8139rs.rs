@@ -4,8 +4,8 @@
 //!
 //! To make this driver probe, QEMU must be run with `-netdev user,id=mynet0 -device rtl8139,netdev=mynet0`.
 
-use core::{fmt, hint::black_box};
-use kernel::{c_str, devres::Devres, pci, prelude::*};
+use core::{fmt, hint::black_box, mem};
+use kernel::{bindings, c_str, devres::Devres, pci, prelude::*};
 
 struct Regs;
 
@@ -61,6 +61,7 @@ type Bar1 = pci::Bar<{ Regs::END }>;
 struct Rtl8139Driver {
     pdev: pci::Device,
     bar: Devres<Bar1>,
+    dev: *mut bindings::net_device,
 }
 
 kernel::pci_device_table!(
@@ -108,7 +109,7 @@ fn sleep(amount: usize) {
 impl Rtl8139Driver {
     const DRV_NAME: &str = "8139rs";
 
-    fn init(pdev: pci::Device, bar_res: Devres<Bar1>) -> Result<Self, InitError> {
+    fn init(pdev: pci::Device, bar_res: Devres<Bar1>, dev: *mut bindings::net_device) -> Result<Self, InitError> {
         let bar = bar_res.try_access().ok_or(InitError::BarRevoked)?;
 
         // turn on
@@ -127,7 +128,7 @@ impl Rtl8139Driver {
         }
 
         dev_info!(pdev.as_ref(), "init done!\n");
-        Ok(Self { pdev, bar: bar_res }) // TODO: will return a [`net_device`] later
+        Ok(Self { pdev, bar: bar_res, dev }) // TODO: will return a [`net_device`] later
     }
 
     fn mac(&self) -> Result<MacAddress, MacGetError> {
@@ -156,10 +157,12 @@ impl pci::Driver for Rtl8139Driver {
         pdev.enable_device_mem()?;
         pdev.set_master();
 
+        let dev = unsafe { bindings::alloc_etherdev(mem::size_of::<Rtl8139Driver>() as i32) };
+
         let bar = pdev.iomap_region_sized::<{ Regs::END }>(1, c_str!("rust_rtl8139_driver"))?;
 
         // START
-        let drv_instance = match Self::init(pdev.clone(), bar) {
+        let drv_instance = match Self::init(pdev.clone(), bar, dev) {
             Ok(drv) => drv,
             Err(e) => {
                 dev_err!(pdev.as_ref(), "failed to init, reason: {:?}\n", e);
