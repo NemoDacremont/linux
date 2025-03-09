@@ -213,6 +213,10 @@ impl pci::Driver for Rtl8139Driver {
         }
         let dev_priv = unsafe {
             let p = bindings::netdev_priv(dev) as *mut Rtl8139Driver;
+            if p.is_null() {
+                dev_err!(pdev.as_ref(), "null netdev_priv\n");
+                return Err(ENOMEM);
+            }
             (*p).pdev = pdev.clone();
             (*p).dev = dev;
             KVBox::from_raw(p)
