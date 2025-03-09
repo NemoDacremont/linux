@@ -58,6 +58,45 @@ enum ChipCmdBits {
 
 type Bar1 = pci::Bar<{ Regs::END }>;
 
+// To be implemented later
+extern "C" fn rtl8139c_dev_init(dev: *mut bindings::net_device) -> core::ffi::c_int {
+    // pr_info("\b[RTL8139c] dev init\n");
+    0
+}
+
+// To be implemented later
+extern "C" fn rtl8139c_open(dev: *mut bindings::net_device) -> core::ffi::c_int {
+    // pr_info("\b[RTL8139c] open\n");
+    0
+}
+
+// To be implemented later
+extern "C" fn rtl8139c_close(dev: *mut bindings::net_device) -> core::ffi::c_int {
+    // pr_info("\b[RTL8139c] close\n");
+    0
+}
+
+// To be implemented later
+extern "C" fn rtl8139c_ioctl(
+    dev: *mut bindings::net_device,
+    ifr: *mut bindings::ifreq,
+    cmd: core::ffi::c_int,
+) -> core::ffi::c_int {
+    // pr_info("\b[RTL8139c] ioctl\n");
+    0
+}
+
+const RTL8139C_NETDEV_OPS: bindings::net_device_ops = bindings::net_device_ops {
+    ndo_init: Some(rtl8139c_dev_init),
+    ndo_open: Some(rtl8139c_open),
+    ndo_stop: Some(rtl8139c_close),
+    ndo_do_ioctl: Some(rtl8139c_ioctl),
+    ndo_validate_addr: Some(bindings::eth_validate_addr),
+    // SAFETY: The rest is zeroed out to initialize `struct net_device_ops`,
+    // set `Option<&F>` to be `None`.
+    ..unsafe { core::mem::MaybeUninit::<bindings::net_device_ops>::zeroed().assume_init() }
+};
+
 struct Rtl8139Driver {
     pdev: pci::Device,
     bar: Devres<Bar1>,
@@ -109,7 +148,11 @@ fn sleep(amount: usize) {
 impl Rtl8139Driver {
     const DRV_NAME: &str = "8139rs";
 
-    fn init(pdev: pci::Device, bar_res: Devres<Bar1>, dev: *mut bindings::net_device) -> Result<Self, InitError> {
+    fn init(
+        pdev: pci::Device,
+        bar_res: Devres<Bar1>,
+        dev: *mut bindings::net_device,
+    ) -> Result<Self, InitError> {
         let bar = bar_res.try_access().ok_or(InitError::BarRevoked)?;
 
         // turn on
@@ -128,7 +171,11 @@ impl Rtl8139Driver {
         }
 
         dev_info!(pdev.as_ref(), "init done!\n");
-        Ok(Self { pdev, bar: bar_res, dev }) // TODO: will return a [`net_device`] later
+        Ok(Self {
+            pdev,
+            bar: bar_res,
+            dev,
+        }) // TODO: will return a [`net_device`] later
     }
 
     fn mac(&self) -> Result<MacAddress, MacGetError> {
@@ -158,6 +205,18 @@ impl pci::Driver for Rtl8139Driver {
         pdev.set_master();
 
         let dev = unsafe { bindings::alloc_etherdev(mem::size_of::<Rtl8139Driver>() as i32) };
+        if dev.is_null() {
+            return Err(ENOMEM);
+        }
+        unsafe {
+            (*dev).dev.parent = &mut (*pdev.as_raw()).dev as *mut bindings::device;
+        }
+        let dev_priv = unsafe {
+            let p = bindings::netdev_priv(dev) as *mut Rtl8139Driver;
+            (*p).pdev = pdev.clone();
+            (*p).dev = dev;
+            KVBox::from_raw(p)
+        };
 
         let bar = pdev.iomap_region_sized::<{ Regs::END }>(1, c_str!("rust_rtl8139_driver"))?;
 
@@ -173,6 +232,15 @@ impl pci::Driver for Rtl8139Driver {
 
         let mac = drv_instance.mac().map_err(|_| ENXIO)?;
         dev_info!(pdev.as_ref(), "MacAddress: tval_v0|{}\n", mac);
+
+        unsafe {
+            (*dev).netdev_ops = &RTL8139C_NETDEV_OPS as *const bindings::net_device_ops;
+            bindings::eth_hw_addr_set(dev, &mac.0 as *const u8);
+            if bindings::register_netdev(dev) != 0 {
+                dev_err!(pdev.as_ref(), "register_netdev failed\n");
+                return Err(ENXIO);
+            }
+        }
 
         Ok(drv_instance.into())
     }
