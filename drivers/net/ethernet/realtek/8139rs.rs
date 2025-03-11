@@ -5,7 +5,7 @@
 //! To make this driver probe, QEMU must be run with `-netdev user,id=mynet0 -device rtl8139,netdev=mynet0`.
 
 use core::{fmt, hint::black_box, mem};
-use kernel::{bindings, c_str, devres::Devres, pci, prelude::*};
+use kernel::{alloc::allocator::KVmalloc, bindings, c_str, devres::Devres, pci, prelude::*};
 
 struct Regs;
 
@@ -236,7 +236,7 @@ impl pci::Driver for Rtl8139Driver {
 
         let mac = drv_instance.mac().map_err(|_| ENXIO)?;
         dev_info!(pdev.as_ref(), "MacAddress: tval_v0|{}\n", mac);
-
+        
         unsafe {
             (*dev).netdev_ops = &RTL8139C_NETDEV_OPS as *const bindings::net_device_ops;
             bindings::eth_hw_addr_set(dev, &mac.0 as *const u8);
@@ -245,6 +245,9 @@ impl pci::Driver for Rtl8139Driver {
                 return Err(ENXIO);
             }
         }
+
+        // TODO: don't leak -- currently needed to not dereference NULL ptr
+        Box::<Rtl8139Driver, KVmalloc>::leak(dev_priv);
 
         Ok(drv_instance.into())
     }
