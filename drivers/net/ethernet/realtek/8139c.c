@@ -4,11 +4,13 @@
  * for more information about magic values.
  */
 
+#include "linux/netdevice.h"
 #define DRV_NAME "8139c"
 #define DRV_VERSION "0.0.1"
 
 #include <linux/module.h>
 #include <linux/pci.h>
+#include <linux/etherdevice.h>
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/io.h>
@@ -44,9 +46,50 @@ static const struct pci_device_id rtl8139c_pci_tbl[] = {
 };
 MODULE_DEVICE_TABLE(pci, rtl8139c_pci_tbl);
 
+// To be implemented later
+static int rtl8139c_dev_init(struct net_device *dev)
+{
+	pr_info("\b[RTL8139c] dev init\n");
+	return 0;
+}
+
+// To be implemented later
+static int rtl8139c_open(struct net_device *dev)
+{
+	pr_info("\b[RTL8139c] open\n");
+	return 0;
+}
+
+// To be implemented later
+static int rtl8139c_close(struct net_device *dev)
+{
+	pr_info("\b[RTL8139c] close\n");
+	return 0;
+}
+
+// To be implemented later
+static int rtl8139c_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
+{
+	pr_info("\b[RTL8139c] ioctl\n");
+	return 0;
+}
+
+/**
+ * Operations with the interface
+ */
+static const struct net_device_ops rtl8139c_netdev_ops = {
+	.ndo_init = rtl8139c_dev_init,
+	.ndo_open = rtl8139c_open,
+	.ndo_stop = rtl8139c_close,
+	.ndo_do_ioctl = rtl8139c_ioctl,
+	.ndo_validate_addr = eth_validate_addr,
+};
+
 struct rtl8139c_priv {
 	void __iomem *hwmem;
 	char mac_address[6];
+	struct pci_dev *pdev;
+	struct net_device *dev;
 };
 
 static void rtl8139c_print_mac_address(struct rtl8139c_priv *drv_priv)
@@ -82,6 +125,19 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	pci_read_config_word(pdev, PCI_DEVICE_ID, &device);
 	printk(KERN_INFO "Device vid: 0x%X pid: 0x%X\n", vendor, device);
 
+	struct net_device *dev;
+	struct rtl8139c_priv *priv;
+
+	dev = alloc_etherdev(sizeof(struct rtl8139c_priv));
+	if (!dev) {
+		return -ENOMEM;
+	}
+	SET_NETDEV_DEV(dev, &pdev->dev);
+
+	priv = netdev_priv(dev);
+	priv->pdev = pdev;
+	priv->dev = dev;
+
 	// enable pci device
 	int err = pci_enable_device_mem(pdev);
 	// enable bus mastering
@@ -101,19 +157,18 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	// get the base address of the PCI device
 	resource_size_t pciaddr = pci_resource_start(pdev, 1);
-	// allocate memory for the driver private data
-	struct rtl8139c_priv *drv_priv = kzalloc(sizeof(*drv_priv), GFP_KERNEL);
+
 	// map the PCI device memory to the driver private data
-	drv_priv->hwmem = ioremap(pciaddr, END);
+	priv->hwmem = ioremap(pciaddr, END);
 
 	// save data for other functions
-	pci_set_drvdata(pdev, drv_priv);
+	pci_set_drvdata(pdev, priv);
 
 	// turn on the RTL8139
-	writeb(0x0, drv_priv->hwmem + CONFIG1);
+	writeb(0x0, priv->hwmem + CONFIG1);
 
 	// reset the RTL8139
-	err = rtl8139c_reset(drv_priv);
+	err = rtl8139c_reset(priv);
 	if (err == 0) {
 		pr_err("\b[RTL8139c] reset failed\n");
 		pci_disable_device(pdev);
@@ -122,10 +177,20 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	// Get MAC address
 	for (int i = 0; i < 6; i++) {
-		drv_priv->mac_address[i] = readb(drv_priv->hwmem + MAC0 + i);
+		priv->mac_address[i] = readb(priv->hwmem + MAC0 + i);
 	}
 
-	rtl8139c_print_mac_address(drv_priv);
+	rtl8139c_print_mac_address(priv);
+	// mandatory to execute register_netdev line 6
+	// https://stackoverflow.com/q/6726939
+	dev->netdev_ops = &rtl8139c_netdev_ops;
+	eth_hw_addr_set(dev, priv->mac_address);
+
+	unsigned rc = register_netdev(dev);
+	if (rc) {
+		iounmap(priv->hwmem);
+		return -1;
+	}
 
 	return 0;
 }
