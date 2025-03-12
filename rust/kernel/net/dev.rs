@@ -288,9 +288,9 @@ impl<T: DeviceOperations> Device<T> {
 
     /// Generate a random Ethernet address (MAC) to be used by a net device
     /// and set addr_assign_type.
-    pub fn set_random_eth_hw_addr(&mut self) {
+    pub fn set_eth_hw_addr(&mut self, address: &[u8]) {
         // SAFETY: The type invariants guarantee that `self.ptr` is valid.
-        unsafe { bindings::eth_hw_addr_random(self.ptr) }
+        unsafe { bindings::eth_hw_addr_set(self.ptr, address.as_ptr() as *const u8) }
     }
 
     /// Registers a network device.
