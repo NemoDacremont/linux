@@ -1,32 +1,31 @@
 BUILD_DIR?=build
 LINUX_PATH?=..
 MK_PATH?=mk
+BZImage_path=${LINUX_PATH}/arch/x86_64/boot/bzImage
+initramfs_path=${BUILD_DIR}/initramfs.cpio.gz
 
 MAC_ADDRESS=de:ad:be:ef:ca:fe
-QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
-	   -initrd ${BUILD_DIR}/initramfs.cpio.gz \
+QEMUFLAGS+=-kernel ${BZImage_path} \
+	   -initrd ${initramfs_path} \
 	   -no-reboot \
 	   -nographic \
 	   -append "console=ttyS0 panic=-1 loglevel=15" \
-	   -device pci-testdev \
 	   -netdev user,id=mynet0 \
 	   -device rtl8139,netdev=mynet0,mac=${MAC_ADDRESS}
 
-tval_v0_QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
-	   -initrd ${BUILD_DIR}/initramfs.cpio.gz \
+tval_v0_QEMUFLAGS+=-kernel ${BZImage_path} \
+	   -initrd ${initramfs_path} \
 	   -no-reboot \
 	   -nographic \
 	   -append "console=ttyS0 panic=-1 loglevel=15 init='/init tval_v0'" \
-	   -device pci-testdev \
 	   -netdev user,id=mynet0 \
 	   -device rtl8139,netdev=mynet0,mac=${MAC_ADDRESS}
 
-tval_v1_QEMUFLAGS+=-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage \
-	   -initrd ${BUILD_DIR}/initramfs.cpio.gz \
+tval_v1_QEMUFLAGS+=-kernel ${BZImage_path} \
+	   -initrd ${initramfs_path} \
 	   -no-reboot \
 	   -nographic \
 	   -append "console=ttyS0 panic=-1 loglevel=15 init='/init tval_v1" \
-	   -device pci-testdev \
 	   -netdev user,id=mynet0 \
 	   -device rtl8139,netdev=mynet0,mac=${MAC_ADDRESS}
 
@@ -136,4 +135,6 @@ clean:
 	format \
 	${REQ_CMD_TARGETS} \
 	ctval_v0 \
-	rtval_v0
+	rtval_v0 \
+	ctval_v1 \
+	rtval_v1
