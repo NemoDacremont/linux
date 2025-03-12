@@ -8,7 +8,14 @@
 //! [`include/linux/skbuff.h`](../../../../include/linux/skbuff.h),
 //! [`include/uapi/linux/if_link.h`](../../../../include/uapi/linux/if_link.h).
 
-use crate::{bindings, build_error, error::*, prelude::vtable, str::CStr, types::ForeignOwnable};
+use crate::{
+    alloc::KBox,
+    bindings, build_error,
+    error::*,
+    prelude::{vtable, GFP_KERNEL},
+    str::CStr,
+    types::ForeignOwnable,
+};
 use {core::ffi::c_void, core::marker::PhantomData};
 
 /// Flags associated with a [`Device`].
@@ -122,7 +129,7 @@ pub mod priv_flags {
 ///
 /// A device driver must implement this. Only very basic operations are supported for now.
 #[vtable]
-pub trait DeviceOperations: ForeignOwnable + Send + Sync {
+pub trait DeviceOperations: Send + Send + Sized + 'static {
     /// Corresponds to `ndo_init` in `struct net_device_ops`.
     fn init(_dev: Device<Self>) -> Result {
         Ok(())
@@ -192,12 +199,14 @@ impl<T: DeviceOperations> Device<T> {
             return Err(code::ENOMEM);
         }
 
+        let boxed_data = KBox::new(data, GFP_KERNEL)?;
+
         // SAFETY: It's safe to write an address returned pointer
         // from `netdev_priv()` because `alloc_etherdev_mqs()` allocates
         // contiguous memory for `struct net_device` and a pointer.
         unsafe {
             let priv_ptr = bindings::netdev_priv(ptr) as *mut *const c_void;
-            core::ptr::write(priv_ptr, data.into_foreign());
+            core::ptr::write(priv_ptr, boxed_data.into_foreign());
         }
 
         // SAFETY: `ptr` points to contiguous memory for `struct net_device` and a pointer,
@@ -206,12 +215,12 @@ impl<T: DeviceOperations> Device<T> {
     }
 
     /// Gets the private data of a device driver.
-    pub fn drv_priv_data(&self) -> T::Borrowed<'_> {
+    pub fn drv_priv_data(&self) -> <KBox<T> as ForeignOwnable>::Borrowed<'_> {
         // SAFETY: The type invariants guarantee that self.ptr is valid and
         // bindings::netdev_priv(self.ptr) returns a pointer that stores an address
         // returned by `ForeignOwnable::into_foreign()`.
         unsafe {
-            T::borrow(core::ptr::read(
+            KBox::<T>::borrow(core::ptr::read(
                 bindings::netdev_priv(self.ptr) as *const *mut c_void
             ))
         }
@@ -229,14 +238,6 @@ impl<T: DeviceOperations> Device<T> {
                 .as_mut_ptr()
                 .copy_from_nonoverlapping(name.as_char_ptr(), name.len());
         }
-        Ok(())
-    }
-
-    pub fn set_parent(&mut self, parent: *mut bindings::device) -> Result {
-        unsafe {
-            (*self.ptr).dev.parent = parent;
-        }
-
         Ok(())
     }
 
@@ -401,7 +402,7 @@ impl<T: DeviceOperations> Drop for Device<T> {
         // bindings::netdev_priv(self.ptr) returns a pointer that stores an address
         // returned by `ForeignOwnable::into_foreign()`.
         unsafe {
-            let _ = T::from_foreign(core::ptr::read(
+            let _ = KBox::<T>::from_foreign(core::ptr::read(
                 bindings::netdev_priv(self.ptr) as *const *mut c_void
             ));
         }
