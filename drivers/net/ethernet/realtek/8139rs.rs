@@ -5,7 +5,17 @@
 //! To make this driver probe, QEMU must be run with `-netdev user,id=mynet0 -device rtl8139,netdev=mynet0`.
 
 use core::{fmt, hint::black_box, mem};
-use kernel::{alloc::allocator::KVmalloc, bindings, c_str, devres::Devres, pci, prelude::*};
+use kernel::{
+    alloc::allocator::KVmalloc,
+    bindings, c_str,
+    devres::Devres,
+    net::{
+        self,
+        dev::{flags, priv_flags, DeviceOperations, SkBuff, TxCode},
+    },
+    pci,
+    prelude::*,
+};
 
 struct Regs;
 
@@ -58,49 +68,23 @@ enum ChipCmdBits {
 
 type Bar1 = pci::Bar<{ Regs::END }>;
 
-// To be implemented later
-extern "C" fn rtl8139c_dev_init(dev: *mut bindings::net_device) -> core::ffi::c_int {
-    // pr_info("\b[RTL8139c] dev init\n");
-    0
-}
+/// For device driver specific information.
+struct DriverData {}
 
-// To be implemented later
-extern "C" fn rtl8139c_open(dev: *mut bindings::net_device) -> core::ffi::c_int {
-    // pr_info("\b[RTL8139c] open\n");
-    0
+#[vtable]
+impl DeviceOperations for KBox<DriverData> {
+    // To be implemented later
+    fn init(dev: net::dev::Device<KBox<DriverData>>) -> Result {
+        // how to access to the driver private data.
+        let _ = dev.drv_priv_data();
+        Ok(())
+    }
 }
-
-// To be implemented later
-extern "C" fn rtl8139c_close(dev: *mut bindings::net_device) -> core::ffi::c_int {
-    // pr_info("\b[RTL8139c] close\n");
-    0
-}
-
-// To be implemented later
-extern "C" fn rtl8139c_ioctl(
-    dev: *mut bindings::net_device,
-    ifr: *mut bindings::ifreq,
-    cmd: core::ffi::c_int,
-) -> core::ffi::c_int {
-    // pr_info("\b[RTL8139c] ioctl\n");
-    0
-}
-
-const RTL8139C_NETDEV_OPS: bindings::net_device_ops = bindings::net_device_ops {
-    ndo_init: Some(rtl8139c_dev_init),
-    ndo_open: Some(rtl8139c_open),
-    ndo_stop: Some(rtl8139c_close),
-    ndo_do_ioctl: Some(rtl8139c_ioctl),
-    ndo_validate_addr: Some(bindings::eth_validate_addr),
-    // SAFETY: The rest is zeroed out to initialize `struct net_device_ops`,
-    // set `Option<&F>` to be `None`.
-    ..unsafe { core::mem::MaybeUninit::<bindings::net_device_ops>::zeroed().assume_init() }
-};
 
 struct Rtl8139Driver {
     pdev: pci::Device,
+    ndev: net::dev::Device<KBox<DriverData>>,
     bar: Devres<Bar1>,
-    dev: *mut bindings::net_device,
 }
 
 kernel::pci_device_table!(
@@ -150,8 +134,8 @@ impl Rtl8139Driver {
 
     fn init(
         pdev: pci::Device,
+        ndev: net::dev::Device<KBox<DriverData>>,
         bar_res: Devres<Bar1>,
-        dev: *mut bindings::net_device,
     ) -> Result<Self, InitError> {
         let bar = bar_res.try_access().ok_or(InitError::BarRevoked)?;
 
@@ -173,9 +157,9 @@ impl Rtl8139Driver {
         dev_info!(pdev.as_ref(), "init done!\n");
         Ok(Self {
             pdev,
+            ndev,
             bar: bar_res,
-            dev,
-        }) // TODO: will return a [`net_device`] later
+        })
     }
 
     fn mac(&self) -> Result<MacAddress, MacGetError> {
@@ -204,28 +188,15 @@ impl pci::Driver for Rtl8139Driver {
         pdev.enable_device_mem()?;
         pdev.set_master();
 
-        let dev = unsafe { bindings::alloc_etherdev(mem::size_of::<Rtl8139Driver>() as i32) };
-        if dev.is_null() {
-            return Err(ENOMEM);
-        }
-        unsafe {
-            (*dev).dev.parent = &mut (*pdev.as_raw()).dev as *mut bindings::device;
-        }
-        let dev_priv = unsafe {
-            let p = bindings::netdev_priv(dev) as *mut Rtl8139Driver;
-            if p.is_null() {
-                dev_err!(pdev.as_ref(), "null netdev_priv\n");
-                return Err(ENOMEM);
-            }
-            (*p).pdev = pdev.clone();
-            (*p).dev = dev;
-            KVBox::from_raw(p)
-        };
+        let data = KBox::new(DriverData {}, GFP_KERNEL)?;
+        let ndev = net::dev::Device::try_new(1, 1, data)?;
+
+        ndev.set_parent(pdev);
 
         let bar = pdev.iomap_region_sized::<{ Regs::END }>(1, c_str!("rust_rtl8139_driver"))?;
 
         // START
-        let drv_instance = match Self::init(pdev.clone(), bar, dev) {
+        let drv_instance = match Self::init(pdev.clone(), KBox::new(ndev, GFP_KERNEL), bar) {
             Ok(drv) => drv,
             Err(e) => {
                 dev_err!(pdev.as_ref(), "failed to init, reason: {:?}\n", e);
@@ -236,18 +207,8 @@ impl pci::Driver for Rtl8139Driver {
 
         let mac = drv_instance.mac().map_err(|_| ENXIO)?;
         dev_info!(pdev.as_ref(), "MacAddress: tval_v0|{}\n", mac);
-        
-        unsafe {
-            (*dev).netdev_ops = &RTL8139C_NETDEV_OPS as *const bindings::net_device_ops;
-            bindings::eth_hw_addr_set(dev, &mac.0 as *const u8);
-            if bindings::register_netdev(dev) != 0 {
-                dev_err!(pdev.as_ref(), "register_netdev failed\n");
-                return Err(ENXIO);
-            }
-        }
 
-        // TODO: don't leak -- currently needed to not dereference NULL ptr
-        Box::<Rtl8139Driver, KVmalloc>::leak(dev_priv);
+        ndev.set_eth_hw_addr(mac.0.as_ref());
 
         Ok(drv_instance.into())
     }
