@@ -232,6 +232,14 @@ impl<T: DeviceOperations> Device<T> {
         Ok(())
     }
 
+    pub fn set_parent(&mut self, parent: *mut bindings::device) -> Result {
+        unsafe {
+            (*self.ptr).dev.parent = parent;
+        }
+
+        Ok(())
+    }
+
     /// Sets carrier.
     pub fn netif_carrier_on(&mut self) {
         // SAFETY: The type invariants guarantee that `self.ptr` is valid.
