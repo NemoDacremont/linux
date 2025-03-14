@@ -11,6 +11,7 @@
 
 # guard to prevent several includes
 ifndef _LLVM_MK_
+UNAME_S ?= $(shell uname -s)
 _LLVM_MK_:="defined"
 
 # Env var using path after uncompressing tar archive
@@ -25,11 +26,25 @@ libclang_path=${llvm_prefix}/lib/libclang.so
 # prevent execution of llvm_all on include
 all:
 
+ifeq ($(UNAME_S),Darwin)
+llvm_all:
+else ifeq ($(UNAME_S),Linux)
 llvm_all: llvm_install
+endif
 
+
+ifeq ($(UNAME_S),Darwin)
+llvm_install:
+else ifeq ($(UNAME_S),Linux)
 llvm_install: llvm_download llvm_install_bindgen
+endif
 
+
+ifeq ($(UNAME_S),Darwin)
+llvm_download:
+else ifeq ($(UNAME_S),Linux)
 llvm_download: ${BUILD_DIR}/${LLVM}
+endif
 
 # Begin of targets for llvm_download 
 
@@ -56,7 +71,6 @@ ${BUILD_DIR}/.bindgen.installed: ${BUILD_DIR}/${LLVM}
 	@# Install bindgen locally
 	PATH=${build_path} LIBCLANG_PATH=${libclang_path} cargo install --locked --root ${llvm_prefix} --version $(shell ${LINUX_PATH}/scripts/min-tool-version.sh bindgen) bindgen-cli
 	touch $@
-
 # End of targets for llvm_install_bindgen 
 
 .PHONY: all llvm_all llvm_install llvm_download llvm_install_bindgen
