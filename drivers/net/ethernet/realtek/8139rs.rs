@@ -72,19 +72,19 @@ struct DriverData {
 
 #[vtable]
 impl DeviceOperations for DriverData {
-    fn init(dev: net::dev::Device<DriverData>) -> Result {
+    fn init(dev: &mut net::dev::Device<DriverData>) -> Result {
         let priv_data = dev.drv_priv_data();
         dev_info!(priv_data.pdev.as_ref(), "init called from device ops!\n");
         Ok(())
     }
 
-    fn open(dev: net::dev::Device<DriverData>) -> Result {
+    fn open(dev: &mut net::dev::Device<DriverData>) -> Result {
         let priv_data = dev.drv_priv_data();
         dev_info!(priv_data.pdev.as_ref(), "open called from device ops!\n");
         Ok(())
     }
 
-    fn stop(dev: net::dev::Device<DriverData>) -> Result {
+    fn stop(dev: &mut net::dev::Device<DriverData>) -> Result {
         let priv_data = dev.drv_priv_data();
         dev_info!(priv_data.pdev.as_ref(), "stop called from device ops!\n");
         Ok(())

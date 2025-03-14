@@ -8,6 +8,8 @@
 //! [`include/linux/skbuff.h`](../../../../include/linux/skbuff.h),
 //! [`include/uapi/linux/if_link.h`](../../../../include/uapi/linux/if_link.h).
 
+use core::mem;
+
 use crate::{
     alloc::KBox,
     bindings, build_error,
@@ -132,25 +134,25 @@ pub mod priv_flags {
 #[vtable]
 pub trait DeviceOperations: Send + Send + Sized + 'static {
     /// Corresponds to `ndo_init` in `struct net_device_ops`.
-    fn init(_dev: Device<Self>) -> Result {
+    fn init(_dev: &mut Device<Self>) -> Result {
         Ok(())
     }
 
     /// Corresponds to `ndo_uninit` in `struct net_device_ops`.
-    fn uninit(_dev: Device<Self>) {}
+    fn uninit(_dev: &mut Device<Self>) {}
 
     /// Corresponds to `ndo_open` in `struct net_device_ops`.
-    fn open(_dev: Device<Self>) -> Result {
+    fn open(_dev: &mut Device<Self>) -> Result {
         Ok(())
     }
 
     /// Corresponds to `ndo_stop` in `struct net_device_ops`.
-    fn stop(_dev: Device<Self>) -> Result {
+    fn stop(_dev: &mut Device<Self>) -> Result {
         Ok(())
     }
 
     /// Corresponds to `ndo_start_xmit` in `struct net_device_ops`.
-    fn start_xmit(_dev: Device<Self>, _skb: SkBuff) -> TxCode {
+    fn start_xmit(_dev: &mut Device<Self>, _skb: SkBuff) -> TxCode {
         TxCode::Busy
     }
 }
@@ -361,23 +363,26 @@ impl<T: DeviceOperations> Device<T> {
     unsafe extern "C" fn init_callback(netdev: *mut bindings::net_device) -> core::ffi::c_int {
         from_result(|| {
             // SAFETY: The C API guarantees that `netdev` is valid while this function is running.
-            let dev = unsafe { Device::from_ptr(netdev, true) };
-            T::init(dev)?;
+            let mut dev = unsafe { Device::from_ptr(netdev, true) };
+            T::init(&mut dev)?;
+            mem::forget(dev); // dropping a Device<T> frees the private data, unregisters the device & frees the device. We want to avoid that
             Ok(0)
         })
     }
 
     unsafe extern "C" fn uninit_callback(netdev: *mut bindings::net_device) {
         // SAFETY: The C API guarantees that `netdev` is valid while this function is running.
-        let dev = unsafe { Device::from_ptr(netdev, true) };
-        T::uninit(dev);
+        let mut dev = unsafe { Device::from_ptr(netdev, true) };
+        T::uninit(&mut dev);
+        mem::forget(dev); // dropping a Device<T> frees the private data, unregisters the device & frees the device. We want to avoid that
     }
 
     unsafe extern "C" fn open_callback(netdev: *mut bindings::net_device) -> core::ffi::c_int {
         from_result(|| {
             // SAFETY: The C API guarantees that `netdev` is valid while this function is running.
-            let dev = unsafe { Device::from_ptr(netdev, true) };
-            T::open(dev)?;
+            let mut dev = unsafe { Device::from_ptr(netdev, true) };
+            T::open(&mut dev)?;
+            mem::forget(dev); // dropping a Device<T> frees the private data, unregisters the device & frees the device. We want to avoid that
             Ok(0)
         })
     }
@@ -385,8 +390,8 @@ impl<T: DeviceOperations> Device<T> {
     unsafe extern "C" fn stop_callback(netdev: *mut bindings::net_device) -> core::ffi::c_int {
         from_result(|| {
             // SAFETY: The C API guarantees that `netdev` is valid while this function is running.
-            let dev = unsafe { Device::from_ptr(netdev, true) };
-            T::stop(dev)?;
+            let mut dev = unsafe { Device::from_ptr(netdev, true) };
+            T::stop(&mut dev)?; // dropping a Device<T> frees the private data, unregisters the device & frees the device. We want to avoid that
             Ok(0)
         })
     }
@@ -396,10 +401,12 @@ impl<T: DeviceOperations> Device<T> {
         netdev: *mut bindings::net_device,
     ) -> bindings::netdev_tx_t {
         // SAFETY: The C API guarantees that `netdev` is valid while this function is running.
-        let dev = unsafe { Device::from_ptr(netdev, true) };
+        let mut dev = unsafe { Device::from_ptr(netdev, true) };
         // SAFETY: The C API guarantees that `skb` is valid until a driver releases the skb.
         let skb = unsafe { SkBuff::from_ptr(skb) };
-        T::start_xmit(dev, skb) as bindings::netdev_tx_t
+        let res = T::start_xmit(&mut dev, skb) as bindings::netdev_tx_t;
+        mem::forget(dev); // dropping a Device<T> frees the private data, unregisters the device & frees the device. We want to avoid that
+        res
     }
 }
 
