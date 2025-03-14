@@ -54,7 +54,7 @@ impl Regs {
     const CONFIG5: usize = 0xD8; /* absent on RTL-8139A, TODO: make sure this is 1 Byte */
     const END: usize = 0xD9;
 }
- 
+
 enum ChipCmdBits {
     CmdReset = 0x10,
     CmdRxEnb = 0x08,
