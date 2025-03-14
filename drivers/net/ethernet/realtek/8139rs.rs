@@ -93,7 +93,7 @@ impl DeviceOperations for DriverData {
 
 /// Thing which linux has a reference to
 struct Rtl8139Driver {
-    ndev: net::dev::Device<DriverData>,
+    _ndev: net::dev::Device<DriverData>,
 }
 
 kernel::pci_device_table!(
@@ -206,7 +206,7 @@ impl pci::Driver for Rtl8139Driver {
         ndev.register()?;
         dev_info!(pdev.as_ref(), "registered!\n");
 
-        Ok(KBox::new(Rtl8139Driver { ndev }, GFP_KERNEL)?.into())
+        Ok(KBox::new(Rtl8139Driver { _ndev: ndev }, GFP_KERNEL)?.into())
     }
 }
 
