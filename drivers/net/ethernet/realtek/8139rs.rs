@@ -72,11 +72,11 @@ struct DriverData {
 
 #[vtable]
 impl DeviceOperations for DriverData {
-    // fn init(dev: net::dev::Device<DriverData>) -> Result {
-    //     // let priv_data = dev.drv_priv_data();
-    //     // dev_info!(priv_data.pdev.as_ref(), "init called from device ops!\n");
-    //     Ok(())
-    // }
+    fn init(dev: net::dev::Device<DriverData>) -> Result {
+        let priv_data = dev.drv_priv_data();
+        dev_info!(priv_data.pdev.as_ref(), "init called from device ops!\n");
+        Ok(())
+    }
 
     fn open(dev: net::dev::Device<DriverData>) -> Result {
         let priv_data = dev.drv_priv_data();
@@ -200,6 +200,7 @@ impl pci::Driver for Rtl8139Driver {
         dev_info!(pdev.as_ref(), "MacAddress: tval_v0|{}\n", mac);
 
         let mut ndev = net::dev::Device::try_new(1, 1, priv_data)?;
+        ndev.set_parent(pdev);
         ndev.set_eth_hw_addr(mac.0.as_ref());
 
         ndev.register()?;

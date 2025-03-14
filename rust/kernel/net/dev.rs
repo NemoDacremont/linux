@@ -12,6 +12,7 @@ use crate::{
     alloc::KBox,
     bindings, build_error,
     error::*,
+    pci,
     prelude::{vtable, GFP_KERNEL},
     str::CStr,
     types::ForeignOwnable,
@@ -300,6 +301,12 @@ impl<T: DeviceOperations> Device<T> {
     pub fn set_eth_hw_addr(&mut self, address: &[u8]) {
         // SAFETY: The type invariants guarantee that `self.ptr` is valid.
         unsafe { bindings::eth_hw_addr_set(self.ptr, address.as_ptr() as *const u8) }
+    }
+
+    pub fn set_parent(&mut self, parent: &mut pci::Device) {
+        unsafe {
+            (*self.ptr).dev.parent = &mut (*parent.as_raw()).dev as *mut bindings::device;
+        }
     }
 
     /// Registers a network device.
