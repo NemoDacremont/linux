@@ -305,6 +305,7 @@ impl<T: DeviceOperations> Device<T> {
         unsafe { bindings::eth_hw_addr_set(self.ptr, address.as_ptr() as *const u8) }
     }
 
+    /// Sets the given pci::Device as parent to the device.
     pub fn set_parent(&mut self, parent: &mut pci::Device) {
         unsafe {
             (*self.ptr).dev.parent = &mut (*parent.as_raw()).dev as *mut bindings::device;
