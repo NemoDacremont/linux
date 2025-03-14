@@ -18,43 +18,43 @@ struct Regs;
 impl Regs {
     const MAC0: usize = 0; /* Ethernet hardware address. */
     const MAR0: usize = 8; /* Multicast filter. */
-    const TxStatus0: usize = 0x10; /* Transmit status (Four 32bit registers). */
-    const TxAddr0: usize = 0x20; /* Tx descriptors (also four 32bit). */
-    const RxBuf: usize = 0x30;
-    const ChipCmd: usize = 0x37;
-    const RxBufPtr: usize = 0x38;
-    const RxBufAddr: usize = 0x3A;
-    const IntrMask: usize = 0x3C;
-    const IntrStatus: usize = 0x3E;
-    const TxConfig: usize = 0x40;
-    const RxConfig: usize = 0x44;
-    const Timer: usize = 0x48; /* A general-purpose counter. */
-    const RxMissed: usize = 0x4C; /* 24 bits valid, write clears. */
-    const Cfg9346: usize = 0x50;
-    const Config0: usize = 0x51;
-    const Config1: usize = 0x52;
-    const TimerInt: usize = 0x54;
-    const MediaStatus: usize = 0x58;
-    const Config3: usize = 0x59;
-    const Config4: usize = 0x5A; /* absent on RTL-8139A */
-    const HltClk: usize = 0x5B;
-    const MultiIntr: usize = 0x5C;
-    const TxSummary: usize = 0x60;
-    const BasicModeCtrl: usize = 0x62;
-    const BasicModeStatus: usize = 0x64;
-    const NWayAdvert: usize = 0x66;
-    const NWayLPAR: usize = 0x68;
-    const NWayExpansion: usize = 0x6A;
+    const TX_STATUS0: usize = 0x10; /* Transmit status (Four 32bit registers). */
+    const TX_ADDR0: usize = 0x20; /* Tx descriptors (also four 32bit). */
+    const RX_BUF: usize = 0x30;
+    const CHIP_CMD: usize = 0x37;
+    const RX_BUF_PTR: usize = 0x38;
+    const RX_BUF_ADDR: usize = 0x3A;
+    const INTR_MASK: usize = 0x3C;
+    const INTR_STATUS: usize = 0x3E;
+    const TX_CONFIG: usize = 0x40;
+    const RX_CONFIG: usize = 0x44;
+    const TIMER: usize = 0x48; /* A general-purpose counter. */
+    const RX_MISSED: usize = 0x4C; /* 24 bits valid, write clears. */
+    const CFG9346: usize = 0x50;
+    const CONFIG0: usize = 0x51;
+    const CONFIG1: usize = 0x52;
+    const TIMER_INT: usize = 0x54;
+    const MEDIA_STATUS: usize = 0x58;
+    const CONFIG3: usize = 0x59;
+    const CONFIG4: usize = 0x5A; /* absent on RTL-8139A */
+    const HLT_CLK: usize = 0x5B;
+    const MULTI_INTR: usize = 0x5C;
+    const TX_SUMMARY: usize = 0x60;
+    const BASIC_MODE_CTRL: usize = 0x62;
+    const BASIC_MODE_STATUS: usize = 0x64;
+    const NWAY_ADVERT: usize = 0x66;
+    const NWAY_LPAR: usize = 0x68;
+    const NWAY_EXPANSION: usize = 0x6A;
     /* Undocumented registers, but required for proper operation. */
     const FIFOTMS: usize = 0x70; /* FIFO Control and test. */
     const CSCR: usize = 0x74; /* Chip Status and Configuration Register. */
     const PARA78: usize = 0x78;
-    const FlashReg: usize = 0xD4; /* Communication with Flash ROM, four bytes. */
-    const PARA7c: usize = 0x7c; /* Magic transceiver parameter register. */
-    const Config5: usize = 0xD8; /* absent on RTL-8139A, TODO: make sure this is 1 Byte */
+    const FLASH_REG: usize = 0xD4; /* Communication with Flash ROM, four bytes. */
+    const PARA7C: usize = 0x7c; /* Magic transceiver parameter register. */
+    const CONFIG5: usize = 0xD8; /* absent on RTL-8139A, TODO: make sure this is 1 Byte */
     const END: usize = 0xD9;
 }
-
+ 
 enum ChipCmdBits {
     CmdReset = 0x10,
     CmdRxEnb = 0x08,
@@ -143,17 +143,17 @@ impl DriverData {
         let bar = bar_res.try_access().ok_or(InitError::BarRevoked)?;
 
         // turn on
-        bar.writeb(0x0, Regs::Config1);
+        bar.writeb(0x0, Regs::CONFIG1);
 
         // software reset
-        bar.writeb(ChipCmdBits::CmdReset as u8, Regs::ChipCmd);
+        bar.writeb(ChipCmdBits::CmdReset as u8, Regs::CHIP_CMD);
         for _ in 0..1000 {
-            if (bar.readb(Regs::ChipCmd) & ChipCmdBits::CmdReset as u8) == 0 {
+            if (bar.readb(Regs::CHIP_CMD) & ChipCmdBits::CmdReset as u8) == 0 {
                 break;
             }
             sleep(1_000);
         }
-        if bar.readb(Regs::ChipCmd) & ChipCmdBits::CmdReset as u8 != 0 {
+        if bar.readb(Regs::CHIP_CMD) & ChipCmdBits::CmdReset as u8 != 0 {
             return Err(InitError::SoftwareResetStuck);
         }
 
