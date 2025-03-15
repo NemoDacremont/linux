@@ -36,6 +36,11 @@
 #include <linux/workqueue.h>
 #include <trace/events/rust_sample.h>
 
+#include <linux/etherdevice.h>
+#include <linux/if_link.h>
+#include <linux/netdevice.h>
+#include <linux/skbuff.h>
+
 /* `bindgen` gets confused at certain things. */
 const size_t RUST_CONST_HELPER_ARCH_SLAB_MINALIGN = ARCH_SLAB_MINALIGN;
 const size_t RUST_CONST_HELPER_PAGE_SIZE = PAGE_SIZE;

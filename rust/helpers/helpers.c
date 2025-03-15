@@ -14,6 +14,7 @@
 #include "cred.c"
 #include "device.c"
 #include "err.c"
+#include "etherdevice.c"
 #include "fs.c"
 #include "io.c"
 #include "irq.c"
