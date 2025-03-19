@@ -1,8 +1,10 @@
 name: C tests
 
-# Was just to test things on github actions
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'drivers/**/*.[ch]'
 
 jobs:
   build:
@@ -11,8 +13,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Install musl-gcc
-      run: sudo apt install musl musl-tools
+      run: sudo apt install musl musl-tools qemu-system libxml2 libelf-dev bc libssl-dev
     - name: Test code formatting
       run: make -C pfa test_format
     - name: Validation test of v0
       run: make -C pfa ctval_v0
+    - name: Validation test of v1
+      run: make -C pfa ctval_v1
