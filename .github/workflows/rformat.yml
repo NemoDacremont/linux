@@ -1,9 +1,11 @@
 name: Rust format
 
+# Became obsolete in favor of rs-tests.yml, only enable manual run
 on:
-  pull_request:
-    paths:
-      - 'drivers/**/*.rs'
+  workflow_dispatch:
+  # pull_request:
+  #   paths:
+  #     - 'drivers/**/*.rs'
 
 jobs:
   build:

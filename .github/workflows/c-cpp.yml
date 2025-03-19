@@ -1,9 +1,11 @@
 name: C/C++ CI
 
-on: 
-  pull_request:
-    paths:
-      - 'drivers/**/*.[ch]'
+# Became obsolete in favor of c-tests.yml, only enable manual run
+on:
+  workflow_dispatch:
+  # pull_request:
+  #   paths:
+  #     - 'drivers/**/*.[ch]'
 
 jobs:
   build:

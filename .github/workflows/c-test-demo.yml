@@ -1,6 +1,7 @@
 name: C tests
 
-on: 
+# Was just to test things on github actions
+on:
   workflow_dispatch:
 
 jobs:
