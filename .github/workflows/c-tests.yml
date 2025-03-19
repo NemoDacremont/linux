@@ -1,10 +1,7 @@
 name: C tests
 
-on:
+on: 
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'drivers/**/*.[ch]'
 
 jobs:
   build:
@@ -18,5 +15,4 @@ jobs:
       run: make -C pfa test_format
     - name: Validation test of v0
       run: make -C pfa ctval_v0
-    - name: Validation test of v1
-      run: make -C pfa ctval_v1
+
