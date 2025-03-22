@@ -42,6 +42,8 @@
     To transmit it would be
 2. Enable receiver (transmitter)
     - Set RE (bit n°2) (TE, bit n°3) to Command Register 0x37
+3. Packet reception handler (poll, for NAPI)
+4. Interrupt handler (to schedule NAPI, for it to use reception handler)
 
 ### Notes
 
