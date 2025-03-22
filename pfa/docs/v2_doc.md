@@ -79,3 +79,10 @@ Here, we need it for the [High-level Driver API](https://docs.kernel.org/core-ap
 > NAPI processing usually happens in the software interrupt context, but there is an option to use separate kernel threads for NAPI processing.
 >
 > All in all NAPI abstracts away from the drivers the context and configuration of event (packet Rx and Tx) processing.
+
+# DMA
+
+[Kernel API](https://docs.kernel.org/core-api/dma-api.html)  
+[Kernel guide](https://docs.kernel.org/core-api/dma-api-howto.html)
+
+[Consistent DMA regions](https://docs.kernel.org/core-api/dma-api-howto.html#using-consistent-dma-mappings)
