@@ -20,6 +20,8 @@
 	"\b[RTL8139c] MAC address: tval_v0|%02x:%02x:%02x:%02x:%02x:%02x\n"
 #endif // MAC_ADDRESS_MESSAGE
 
+#define IRQF_SHARED 0x00000080
+
 enum RTL8139c_registers {
 	MAC0 = 0, /* Ethernet hardware address. */
 	MAR0 = 8, /* Multicast filter. */
@@ -36,6 +38,12 @@ enum ChipCmdBits {
 	CmdRxEnb = 0x08,
 	CmdTxEnb = 0x04,
 	RxBufEmpty = 0x01,
+};
+
+enum IntrStatus {
+	RxOvw = (1 << 4),
+	RxErr = (1 << 1), /* Rx error */
+	RxOK = (1 << 0) /* Rx packet received */
 };
 
 static const struct pci_device_id rtl8139c_pci_tbl[] = {
@@ -57,7 +65,37 @@ static int rtl8139c_dev_init(struct net_device *dev)
 static int rtl8139c_open(struct net_device *dev)
 {
 	pr_info("\b[RTL8139c] open\n");
+	struct rtl8139c_priv *priv = netdev_priv(dev);
+
+	writew(CmdRxEnb, priv->hwmem + ChipCmd);
+
+	int rc = request_irq(priv->pdev->irq, interrupt_handler, IRQF_SHARED,
+			     dev->name, dev);
+	if (rc)
+		pr_err("\b[RTL8139c] Open error on request_irq \n");
+
+	writew(RxOvw | RxOK | RxErr, priv->hwmem + IMR);
+
 	return 0;
+}
+
+static irqreturn_t interrupt_handler(int irq, void *dev_instance)
+{
+	struct net_device *dev = dev_instance;
+	struct rtl8139c_priv *priv = netdev_priv(dev);
+
+	u16 status = readw(priv->hwmem + ISR);
+
+	if (status & RxOK) {
+		pr_info("Packet received !");
+	}
+	if (status & RxErr) {
+		pr_info("Error in reception");
+	}
+	if (status & RxOvw) {
+		pr_err("Overflow during reception");
+	}
+	return IRQ_HANDLED
 }
 
 // To be implemented later
