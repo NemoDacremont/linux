@@ -28,10 +28,25 @@
 > This function is called when a network device transitions to the up state.
 
 1. `alloc_rings`
-2. enable NAPI `napi_enable`
-3. enable interruptions `request_irq`
-4. `init_hw` -> `reset_hw`, `start_hw` -> `set_cmd`
-5. (allow transmit `netif_start_queue`)
+2. initialize the circular data structures to stock data.
+3. enable NAPI `napi_enable` (Check for eventual errors and disable it)
+4. enable interruptions `request_irq`
+5. `init_hw` -> `reset_hw`, `start_hw` -> `set_cmd`
+6. (allow transmit `netif_start_queue`)
+
+#### Close 
+
+1. disable NAPI `napi_disable`
+
+#### Interruption handler
+
+1. Check before scheduling `napi_schedule_prep`
+2. Scheduling NAPI instance `__napi_schedule`
+
+#### Poll method
+
+> Poll method is given to the napi_struct during initialization.
+
 
 ## Roadmap
 
