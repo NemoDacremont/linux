@@ -1,4 +1,4 @@
-BILD_DIR?=build
+BUILD_DIR?=build
 LINUX_PATH?=..
 MK_PATH?=mk
 
