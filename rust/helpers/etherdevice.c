@@ -15,3 +15,9 @@ void rust_helper_skb_tx_timestamp(struct sk_buff *skb)
 {
 	skb_tx_timestamp(skb);
 }
+
+void rust_helper_kfree_skb_reason(struct sk_buff *skb,
+				  enum skb_drop_reason reason)
+{
+	sk_skb_reason_drop(NULL, skb, reason);
+}

@@ -3,12 +3,21 @@
 //! Rust RTL8139 ethernet PCI driver.
 //!
 //! To make this driver probe, QEMU must be run with `-netdev user,id=mynet0 -device rtl8139,netdev=mynet0`.
+//! to setup inferface and test sending packets:
+//! ```shell
+//! ip link set eth0 up
+//! ip addr add 192.168.100.2/24 dev eth0
+//! ping 192.168.100.1
+//! ```
 
-use core::{fmt, hint::black_box};
+use core::{ffi::c_uchar, fmt, hint::black_box};
 use kernel::{
     c_str,
     devres::Devres,
-    net::{self, dev::DeviceOperations},
+    net::{
+        self,
+        dev::{DeviceOperations, SkBuff, TxCode},
+    },
     pci,
     prelude::*,
 };
@@ -88,6 +97,14 @@ impl DeviceOperations for DriverData {
         let priv_data = dev.drv_priv_data();
         dev_info!(priv_data.pdev.as_ref(), "stop called from device ops!\n");
         Ok(())
+    }
+
+    fn start_xmit(dev: &mut net::dev::Device<Self>, skb: SkBuff) -> TxCode {
+        let priv_data = dev.drv_priv_data();
+        dev_info!(priv_data.pdev.as_ref(), "xmit called from device ops!\n");
+        dev_info!(priv_data.pdev.as_ref(), "{:02X?}", skb.data());
+        skb.consume();
+        TxCode::Ok
     }
 }
 

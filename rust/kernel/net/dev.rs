@@ -466,7 +466,7 @@ pub enum TxCode {
 /// # Invariants
 ///
 /// The pointer is valid.
-pub struct SkBuff(*mut bindings::sk_buff);
+pub struct SkBuff(pub *mut bindings::sk_buff);
 
 impl SkBuff {
     /// Creates a new [`SkBuff`] instance.
@@ -479,6 +479,10 @@ impl SkBuff {
         Self(ptr)
     }
 
+    pub fn data(&self) -> &[u8] {
+        unsafe { core::slice::from_raw_parts((*self.0).data, (*self.0).len as usize) }
+    }
+
     /// Provides a time stamp.
     pub fn tx_timestamp(&mut self) {
         // SAFETY: The type invariants guarantee that `self.0` is valid.
@@ -487,14 +491,14 @@ impl SkBuff {
         }
     }
 
-    // /// Consumes a [`sk_buff`] object.
-    // pub fn consume(self) {
-    //     // SAFETY: The type invariants guarantee that `self.0` is valid.
-    //     unsafe {
-    //         bindings::kfree_skb_reason(self.0, bindings::skb_drop_reason_SKB_CONSUMED);
-    //     }
-    //     core::mem::forget(self);
-    // }
+    /// Consumes a [`sk_buff`] object.
+    pub fn consume(self) {
+        // SAFETY: The type invariants guarantee that `self.0` is valid.
+        unsafe {
+            bindings::kfree_skb_reason(self.0, bindings::skb_drop_reason_SKB_CONSUMED);
+        }
+        core::mem::forget(self);
+    }
 }
 
 impl Drop for SkBuff {
