@@ -23,5 +23,7 @@ then
 	exit 0
 fi
 
+ip link set eth0 up  # Enable communication with host
+ip a add dev eth0 192.168.252.1/24  # Set an ip a
 
 exec /bin/sh $@
