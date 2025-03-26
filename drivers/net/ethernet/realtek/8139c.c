@@ -46,6 +46,15 @@ enum IntrStatus {
 	RxOK = (1 << 0) /* Rx packet received */
 };
 
+struct rtl8139c_priv {
+	void __iomem *hwmem;
+	void *rx_ring;
+	dma_addr_t dma_handle;
+	char mac_address[6];
+	struct pci_dev *pdev;
+	struct net_device *dev;
+};
+
 static const struct pci_device_id rtl8139c_pci_tbl[] = {
 	{
 		PCI_DEVICE(0x10EC, 0x8139),
@@ -61,26 +70,10 @@ static int rtl8139c_dev_init(struct net_device *dev)
 	return 0;
 }
 
-// To be implemented later
-static int rtl8139c_open(struct net_device *dev)
-{
-	pr_info("\b[RTL8139c] open\n");
-	struct rtl8139c_priv *priv = netdev_priv(dev);
-
-	writew(CmdRxEnb, priv->hwmem + ChipCmd);
-
-	int rc = request_irq(priv->pdev->irq, interrupt_handler, IRQF_SHARED,
-			     dev->name, dev);
-	if (rc)
-		pr_err("\b[RTL8139c] Open error on request_irq \n");
-
-	writew(RxOvw | RxOK | RxErr, priv->hwmem + IMR);
-
-	return 0;
-}
-
 static irqreturn_t interrupt_handler(int irq, void *dev_instance)
 {
+	pr_info("\b[RTL8139c] interrupted\n");
+
 	struct net_device *dev = dev_instance;
 	struct rtl8139c_priv *priv = netdev_priv(dev);
 
@@ -95,7 +88,31 @@ static irqreturn_t interrupt_handler(int irq, void *dev_instance)
 	if (status & RxOvw) {
 		pr_err("Overflow during reception");
 	}
-	return IRQ_HANDLED
+	
+	return IRQ_HANDLED;
+}
+
+// To be implemented later
+static int rtl8139c_open(struct net_device *dev)
+{
+	pr_info("\b[RTL8139c] open\n");
+	struct rtl8139c_priv *priv = netdev_priv(dev);
+
+	writew(CmdRxEnb, priv->hwmem + ChipCmd);
+
+	// priv->rx_ring = dma_alloc_coherent(&priv->pdev->dev, 1000000,
+	// 				   &priv->dma_handle, GFP_KERNEL);
+	// writel(priv->dma_handle, priv->hwmem + RBSTART);
+	// writel(priv->dma_handle + 500000, priv->hwmem + 0x20);
+
+	int rc = request_irq(priv->pdev->irq, interrupt_handler, IRQF_SHARED,
+			     dev->name, dev);
+	if (rc)
+		pr_err("\b[RTL8139c] Open error on request_irq \n");
+
+	writew(RxOvw | RxOK | RxErr, priv->hwmem + IMR);
+
+	return 0;
 }
 
 // To be implemented later
@@ -112,6 +129,13 @@ static int rtl8139c_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	return 0;
 }
 
+static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *pkt, struct net_device *dev)
+{
+	pr_info("\b[RTL8139c] Packet emitted lol\n");
+
+	return NETDEV_TX_OK;
+}
+
 /**
  * Operations with the interface
  */
@@ -119,15 +143,9 @@ static const struct net_device_ops rtl8139c_netdev_ops = {
 	.ndo_init = rtl8139c_dev_init,
 	.ndo_open = rtl8139c_open,
 	.ndo_stop = rtl8139c_close,
+	.ndo_start_xmit = rtl8139c_start_xmit,
 	.ndo_do_ioctl = rtl8139c_ioctl,
 	.ndo_validate_addr = eth_validate_addr,
-};
-
-struct rtl8139c_priv {
-	void __iomem *hwmem;
-	char mac_address[6];
-	struct pci_dev *pdev;
-	struct net_device *dev;
 };
 
 static void rtl8139c_print_mac_address(struct rtl8139c_priv *drv_priv)
