@@ -81,12 +81,19 @@ rbuild: prebuild  rlinux_all
 # Build C driver
 cbuild: prebuild clinux_all 
 
+# Build C driver
+cpbuild: prebuild cplinux_all 
+
 # Starts qemu with the kernel built with the rust driver
 rstart: rbuild
-	qemu-system-x86_64 ${QEMUFLAGS}
+	sudo qemu-system-x86_64 ${QEMUFLAGS}
 
 # Starts qemu with the kernel built with the C driver
 cstart: cbuild
+	sudo qemu-system-x86_64 ${QEMUFLAGS}
+
+# Starts qemu with the kernel built with the official kernel CP driver
+cpstart: cpbuild
 	sudo qemu-system-x86_64 ${QEMUFLAGS}
 
 # Validation test for v0 of the rust driver

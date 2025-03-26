@@ -36,6 +36,9 @@ all:
 # Default clinux target
 clinux_all: clinux_build
 
+# Default cplinux target
+cplinux_all: cplinux_build
+
 # Build x86 Linux Kernel
 # This is a PHONY target because the need to compile files is delegated to 
 # Linux Kernel's Makefile
@@ -43,10 +46,24 @@ clinux_all: clinux_build
 # NB: the hack of using yes "" is to use the default config that may be offered
 # by Linux Kernel's Makefile
 clinux_build: llvm_install clinux_config
-	yes "" | make bzImage -C ${LINUX_PATH} ${CLINUX_FLAGS}
+	make menuconfig -C ${LINUX_PATH} ${CLINUX_FLAGS}
+	# yes "" | make bzImage -C ${LINUX_PATH} ${CLINUX_FLAGS}
 
 # Force the use of the Kernel config "cconfig"
 clinux_config:
 	cp ${MK_PATH}/cconfig ${LINUX_PATH}/.config
+
+# Build x86 Linux Kernel
+# This is a PHONY target because the need to compile files is delegated to 
+# Linux Kernel's Makefile
+#
+# NB: the hack of using yes "" is to use the default config that may be offered
+# by Linux Kernel's Makefile
+cplinux_build: llvm_install cplinux_config
+	yes "" | make bzImage -C ${LINUX_PATH} ${CLINUX_FLAGS}
+
+# Force the use of the Kernel config "cconfig"
+cplinux_config:
+	cp ${MK_PATH}/cpconfig ${LINUX_PATH}/.config
 
 .PHONY: all linux_all clinux_build clinux_config 
