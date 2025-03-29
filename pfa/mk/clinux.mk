@@ -46,8 +46,7 @@ cplinux_all: cplinux_build
 # NB: the hack of using yes "" is to use the default config that may be offered
 # by Linux Kernel's Makefile
 clinux_build: llvm_install clinux_config
-	make menuconfig -C ${LINUX_PATH} ${CLINUX_FLAGS}
-	# yes "" | make bzImage -C ${LINUX_PATH} ${CLINUX_FLAGS}
+	yes "" | make bzImage -C ${LINUX_PATH} ${CLINUX_FLAGS}
 
 # Force the use of the Kernel config "cconfig"
 clinux_config:

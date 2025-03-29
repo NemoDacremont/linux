@@ -76,13 +76,13 @@ prebuild: check_deps busybox_all initramfs_all
 build: rbuild
 
 # Build rust driver
-rbuild: prebuild  rlinux_all 
+rbuild: prebuild  rlinux_all
 
 # Build C driver
-cbuild: prebuild clinux_all 
+cbuild: prebuild clinux_all
 
 # Build C driver
-cpbuild: prebuild cplinux_all 
+cpbuild: prebuild cplinux_all
 
 # Starts qemu with the kernel built with the rust driver
 rstart: rbuild
@@ -119,6 +119,18 @@ ctval_v1: cbuild
 	(sudo qemu-system-x86_64 ${tval_v1_QEMUFLAGS} | grep "tval_v1|${MAC_ADDRESS}" 2>/dev/null >/dev/null) \
 		|| (echo -e "\n KO - tvalv1 Couldn't find the tag 'tval_v1|${MAC_ADDRESS}' in tval_v1 logs\n"; exit 1) \
 		&& echo -e "\n OK - tvalv1\n"
+
+# Validation test for v2 of the C driver
+ctval_v2: cbuild
+	./tval_v2
+
+# Validation test for v2 of the rust driver
+rtval_v2: rbuild
+	./tval_v2
+
+# Used to test if the test works, uses the kernel's official driver for rtl8139
+cptval_v2: cpbuild
+	./tval_v2
 
 # Test if % is installed, recommand to use ${DEP_CMD} otherwise
 ${REQ_CMD_TARGETS}: check_dep_%:
