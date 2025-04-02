@@ -10,7 +10,6 @@
 
 #include <drm/drm_exec.h>
 #include <drm/drm_print.h>
-#include <drm/ttm/ttm_execbuf_util.h>
 #include <drm/ttm/ttm_tt.h>
 #include <uapi/drm/xe_drm.h>
 #include <linux/ascii85.h>
@@ -667,20 +666,33 @@ int xe_vm_userptr_pin(struct xe_vm *vm)
 
 	/* Collect invalidated userptrs */
 	spin_lock(&vm->userptr.invalidated_lock);
+	xe_assert(vm->xe, list_empty(&vm->userptr.repin_list));
 	list_for_each_entry_safe(uvma, next, &vm->userptr.invalidated,
 				 userptr.invalidate_link) {
 		list_del_init(&uvma->userptr.invalidate_link);
-		list_move_tail(&uvma->userptr.repin_link,
-			       &vm->userptr.repin_list);
+		list_add_tail(&uvma->userptr.repin_link,
+			      &vm->userptr.repin_list);
 	}
 	spin_unlock(&vm->userptr.invalidated_lock);
 
-	/* Pin and move to temporary list */
+	/* Pin and move to bind list */
 	list_for_each_entry_safe(uvma, next, &vm->userptr.repin_list,
 				 userptr.repin_link) {
 		err = xe_vma_userptr_pin_pages(uvma);
 		if (err == -EFAULT) {
 			list_del_init(&uvma->userptr.repin_link);
+			/*
+			 * We might have already done the pin once already, but
+			 * then had to retry before the re-bind happened, due
+			 * some other condition in the caller, but in the
+			 * meantime the userptr got dinged by the notifier such
+			 * that we need to revalidate here, but this time we hit
+			 * the EFAULT. In such a case make sure we remove
+			 * ourselves from the rebind list to avoid going down in
+			 * flames.
+			 */
+			if (!list_empty(&uvma->vma.combined_links.rebind))
+				list_del_init(&uvma->vma.combined_links.rebind);
 
 			/* Wait for pending binds */
 			xe_vm_lock(vm, false);
@@ -691,10 +703,10 @@ int xe_vm_userptr_pin(struct xe_vm *vm)
 			err = xe_vm_invalidate_vma(&uvma->vma);
 			xe_vm_unlock(vm);
 			if (err)
-				return err;
+				break;
 		} else {
-			if (err < 0)
-				return err;
+			if (err)
+				break;
 
 			list_del_init(&uvma->userptr.repin_link);
 			list_move_tail(&uvma->vma.combined_links.rebind,
@@ -702,7 +714,19 @@ int xe_vm_userptr_pin(struct xe_vm *vm)
 		}
 	}
 
-	return 0;
+	if (err) {
+		down_write(&vm->userptr.notifier_lock);
+		spin_lock(&vm->userptr.invalidated_lock);
+		list_for_each_entry_safe(uvma, next, &vm->userptr.repin_list,
+					 userptr.repin_link) {
+			list_del_init(&uvma->userptr.repin_link);
+			list_move_tail(&uvma->userptr.invalidate_link,
+				       &vm->userptr.invalidated);
+		}
+		spin_unlock(&vm->userptr.invalidated_lock);
+		up_write(&vm->userptr.notifier_lock);
+	}
+	return err;
 }
 
 /**
@@ -733,13 +757,14 @@ static int xe_vma_ops_alloc(struct xe_vma_ops *vops, bool array_of_binds)
 		vops->pt_update_ops[i].ops =
 			kmalloc_array(vops->pt_update_ops[i].num_ops,
 				      sizeof(*vops->pt_update_ops[i].ops),
-				      GFP_KERNEL);
+				      GFP_KERNEL | __GFP_RETRY_MAYFAIL | __GFP_NOWARN);
 		if (!vops->pt_update_ops[i].ops)
 			return array_of_binds ? -ENOBUFS : -ENOMEM;
 	}
 
 	return 0;
 }
+ALLOW_ERROR_INJECTION(xe_vma_ops_alloc, ERRNO);
 
 static void xe_vma_ops_fini(struct xe_vma_ops *vops)
 {
@@ -1024,7 +1049,7 @@ static void xe_vma_destroy_late(struct xe_vma *vma)
 
 		/*
 		 * Since userptr pages are not pinned, we can't remove
-		 * the notifer until we're sure the GPU is not accessing
+		 * the notifier until we're sure the GPU is not accessing
 		 * them anymore
 		 */
 		mmu_interval_notifier_remove(&userptr->notifier);
@@ -1066,6 +1091,7 @@ static void xe_vma_destroy(struct xe_vma *vma, struct dma_fence *fence)
 		xe_assert(vm->xe, vma->gpuva.flags & XE_VMA_DESTROYED);
 
 		spin_lock(&vm->userptr.invalidated_lock);
+		xe_assert(vm->xe, list_empty(&to_userptr_vma(vma)->userptr.repin_link));
 		list_del(&to_userptr_vma(vma)->userptr.invalidate_link);
 		spin_unlock(&vm->userptr.invalidated_lock);
 	} else if (!xe_vma_is_null(vma)) {
@@ -1352,6 +1378,7 @@ static int xe_vm_create_scratch(struct xe_device *xe, struct xe_tile *tile,
 
 	return 0;
 }
+ALLOW_ERROR_INJECTION(xe_vm_create_scratch, ERRNO);
 
 static void xe_vm_free_scratch(struct xe_vm *vm)
 {
@@ -1978,6 +2005,7 @@ vm_bind_ioctl_ops_create(struct xe_vm *vm, struct xe_bo *bo,
 
 	return ops;
 }
+ALLOW_ERROR_INJECTION(vm_bind_ioctl_ops_create, ERRNO);
 
 static struct xe_vma *new_vma(struct xe_vm *vm, struct drm_gpuva_op_map *op,
 			      u16 pat_index, unsigned int flags)
@@ -2105,7 +2133,7 @@ static int xe_vma_op_commit(struct xe_vm *vm, struct xe_vma_op *op)
 			}
 		}
 
-		/* Adjust for partial unbind after removin VMA from VM */
+		/* Adjust for partial unbind after removing VMA from VM */
 		if (!err) {
 			op->base.remap.unmap->va->va.addr = op->remap.start;
 			op->base.remap.unmap->va->va.range = op->remap.range;
@@ -2357,13 +2385,15 @@ static int vma_lock_and_validate(struct drm_exec *exec, struct xe_vma *vma,
 				 bool validate)
 {
 	struct xe_bo *bo = xe_vma_bo(vma);
+	struct xe_vm *vm = xe_vma_vm(vma);
 	int err = 0;
 
 	if (bo) {
 		if (!bo->vm)
 			err = drm_exec_lock_obj(exec, &bo->ttm.base);
 		if (!err && validate)
-			err = xe_bo_validate(bo, xe_vma_vm(vma), true);
+			err = xe_bo_validate(bo, vm,
+					     !xe_vm_in_preempt_fence_mode(vm));
 	}
 
 	return err;
@@ -2697,6 +2727,7 @@ unlock:
 	drm_exec_fini(&exec);
 	return err;
 }
+ALLOW_ERROR_INJECTION(vm_bind_ioctl_ops_execute, ERRNO);
 
 #define SUPPORTED_FLAGS_STUB  \
 	(DRM_XE_VM_BIND_FLAG_READONLY | \
@@ -2733,7 +2764,8 @@ static int vm_bind_ioctl_check_args(struct xe_device *xe,
 
 		*bind_ops = kvmalloc_array(args->num_binds,
 					   sizeof(struct drm_xe_vm_bind_op),
-					   GFP_KERNEL | __GFP_ACCOUNT);
+					   GFP_KERNEL | __GFP_ACCOUNT |
+					   __GFP_RETRY_MAYFAIL | __GFP_NOWARN);
 		if (!*bind_ops)
 			return args->num_binds > 1 ? -ENOBUFS : -ENOMEM;
 
@@ -2973,14 +3005,16 @@ int xe_vm_bind_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 
 	if (args->num_binds) {
 		bos = kvcalloc(args->num_binds, sizeof(*bos),
-			       GFP_KERNEL | __GFP_ACCOUNT);
+			       GFP_KERNEL | __GFP_ACCOUNT |
+			       __GFP_RETRY_MAYFAIL | __GFP_NOWARN);
 		if (!bos) {
 			err = -ENOMEM;
 			goto release_vm_lock;
 		}
 
 		ops = kvcalloc(args->num_binds, sizeof(*ops),
-			       GFP_KERNEL | __GFP_ACCOUNT);
+			       GFP_KERNEL | __GFP_ACCOUNT |
+			       __GFP_RETRY_MAYFAIL | __GFP_NOWARN);
 		if (!ops) {
 			err = -ENOMEM;
 			goto release_vm_lock;
@@ -3303,7 +3337,6 @@ void xe_vm_snapshot_capture_delayed(struct xe_vm_snapshot *snap)
 
 	for (int i = 0; i < snap->num_snaps; i++) {
 		struct xe_bo *bo = snap->snap[i].bo;
-		struct iosys_map src;
 		int err;
 
 		if (IS_ERR(snap->snap[i].data))
@@ -3316,16 +3349,8 @@ void xe_vm_snapshot_capture_delayed(struct xe_vm_snapshot *snap)
 		}
 
 		if (bo) {
-			xe_bo_lock(bo, false);
-			err = ttm_bo_vmap(&bo->ttm, &src);
-			if (!err) {
-				xe_map_memcpy_from(xe_bo_device(bo),
-						   snap->snap[i].data,
-						   &src, snap->snap[i].bo_ofs,
-						   snap->snap[i].len);
-				ttm_bo_vunmap(&bo->ttm, &src);
-			}
-			xe_bo_unlock(bo);
+			err = xe_bo_read(bo, snap->snap[i].bo_ofs,
+					 snap->snap[i].data, snap->snap[i].len);
 		} else {
 			void __user *userptr = (void __user *)(size_t)snap->snap[i].bo_ofs;
 
