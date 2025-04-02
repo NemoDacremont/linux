@@ -94,6 +94,7 @@ static irqreturn_t interrupt_handler(int irq, void *dev_instance)
 	struct rtl8139c_priv *priv = netdev_priv(dev);
 
 	u16 status = readw(priv->hwmem + ISR);
+	writew(0x05, priv->hwmem + ISR);
 
 	if (status & RxOK) {
 		pr_info("Packet received !");
