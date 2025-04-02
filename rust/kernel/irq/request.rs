@@ -6,7 +6,7 @@
 use core::marker::PhantomPinned;
 use core::ptr::addr_of_mut;
 
-use init::pin_init_from_closure;
+use pin_init::pin_init_from_closure;
 
 use crate::error::to_result;
 use crate::prelude::*;
