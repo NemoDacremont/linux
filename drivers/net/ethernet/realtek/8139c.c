@@ -27,6 +27,8 @@ enum RTL8139c_registers {
 	MAR0 = 8, /* Multicast filter. */
 	RBSTART = 0x30, /* Receive buffer start address. */
 	ChipCmd = 0x37, /* Command register. */
+	CAPR = 0x38,
+	RxConfig = 0x44,
 	IMR = 0x3C, /* Interrupt mask register. */
 	ISR = 0x3E, /* Interrupt status register. */
 	CONFIG1 = 0x52, /* Configuration register 1. */
@@ -44,6 +46,20 @@ enum IntrStatus {
 	RxOvw = (1 << 4),
 	RxErr = (1 << 1), /* Rx error */
 	RxOK = (1 << 0) /* Rx packet received */
+};
+
+enum RxConfig {
+	/* RxConfig register */
+	RxBufferLengthMax = 0x1800,
+	RxWrap = 0x80,
+	RxCfgFIFOShift = 13, /* Shift, to get Rx FIFO thresh value */
+	RxCfgDMAShift = 8, /* Shift, to get Rx Max DMA value */
+	AcceptErr = 0x20, /* Accept packets with CRC errors */
+	AcceptRunt = 0x10, /* Accept runt (<64 bytes) packets */
+	AcceptBroadcast = 0x08, /* Accept broadcast packets */
+	AcceptMulticast = 0x04, /* Accept multicast packets */
+	AcceptMyPhys = 0x02, /* Accept pkts with our MAC as dest */
+	AcceptAllPhys = 0x01, /* Accept all pkts w/ physical dest */
 };
 
 struct rtl8139c_priv {
@@ -88,7 +104,7 @@ static irqreturn_t interrupt_handler(int irq, void *dev_instance)
 	if (status & RxOvw) {
 		pr_err("Overflow during reception");
 	}
-	
+
 	return IRQ_HANDLED;
 }
 
@@ -98,17 +114,23 @@ static int rtl8139c_open(struct net_device *dev)
 	pr_info("\b[RTL8139c] open\n");
 	struct rtl8139c_priv *priv = netdev_priv(dev);
 
-	writew(CmdRxEnb, priv->hwmem + ChipCmd);
+	priv->rx_ring = dma_alloc_coherent(&priv->pdev->dev, 1000000,
+					   &priv->dma_handle, GFP_KERNEL);
+	writel(priv->dma_handle, priv->hwmem + RBSTART);
 
-	// priv->rx_ring = dma_alloc_coherent(&priv->pdev->dev, 1000000,
-	// 				   &priv->dma_handle, GFP_KERNEL);
-	// writel(priv->dma_handle, priv->hwmem + RBSTART);
-	// writel(priv->dma_handle + 500000, priv->hwmem + 0x20);
+	writew(CmdRxEnb, priv->hwmem + ChipCmd);
 
 	int rc = request_irq(priv->pdev->irq, interrupt_handler, IRQF_SHARED,
 			     dev->name, dev);
 	if (rc)
 		pr_err("\b[RTL8139c] Open error on request_irq \n");
+
+	int rx_config_read = readl(priv->hwmem + RxConfig);
+	writel(rx_config_read | RxBufferLengthMax | RxWrap | AcceptBroadcast |
+		       AcceptMulticast | AcceptMyPhys,
+	       priv->hwmem + RxConfig);
+
+	writew(0xfff0, priv->hwmem + CAPR);
 
 	writew(RxOvw | RxOK | RxErr, priv->hwmem + IMR);
 
@@ -129,7 +151,8 @@ static int rtl8139c_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	return 0;
 }
 
-static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *pkt, struct net_device *dev)
+static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *pkt,
+				       struct net_device *dev)
 {
 	pr_info("\b[RTL8139c] Packet emitted lol\n");
 
