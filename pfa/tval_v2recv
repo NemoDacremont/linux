@@ -25,13 +25,16 @@ EOF
 
 exec_test ()
 {
-    (sudo timeout 10 qemu-system-x86_64 ${most_qemu_args} -append "console=ttyS0 panic=-1 loglevel=15 init='/init tval_v2recv'" 2>&1 | grep 'tval_v2|recv' && echo "OK - tvalv2 recv" || echo "NOK - tvalv2 recv") &
+    (sudo timeout 10 qemu-system-x86_64 ${most_qemu_args} -append "console=ttyS0 panic=-1 loglevel=15 init='/init tval_v2recv'" 2>&1 | tee .tval_v2recv.output) &
 
     sleep 0.2  # It's annoying to find a better way
     sudo ip a add dev tap0 192.168.252.2/24
 
     spam
     wait
+
+    grep 'tval_v2|recv' .tval_v2recv.output >/dev/null && echo "OK - tvalv2 recv" || echo "NOK - tvalv2 recv"
+    rm -f .tval_v2recv.output
 }
 
 exec_test

@@ -14,8 +14,6 @@ Boot took $(cut -d' ' -f1 /proc/uptime) seconds
 ip link set eth0 up  # Enable communication with host
 ip a add dev eth0 192.168.252.1/24  # Set an ip a
 
-echo $1
-
 if [ "$1" = "tval_v0" ]
 then
 	# Force init kill to stop the vm
@@ -45,7 +43,7 @@ EOF
 
 elif [ "$1" = "tval_v2send'" ]
 then
-    nc -c 192.168.252.2 9999 << EOF
+    nc 192.168.252.2 9999 << EOF
 tval_v2|send
 EOF
 	exit 1
