@@ -132,13 +132,37 @@ rtval_v2: rbuild
 cptval_v2: cpbuild
 	./tval_v2
 
+
+# Validation test for v2 of the C driver
+ctval_v2send: cbuild
+	./tval_v2send
+
+# Validation test for v2 of the rust driver
+rtval_v2send: rbuild
+	./tval_v2send
+
+# Used to test if the test works, uses the kernel's official driver for rtl8139
+cptval_v2send: cpbuild
+	./tval_v2send
+
+# Validation test for v2 of the C driver
+ctval_v2recv: cbuild
+	./tval_v2recv
+
+# Validation test for v2 of the rust driver
+rtval_v2recv: rbuild
+	./tval_v2recv
+
+# Used to test if the test works, uses the kernel's official driver for rtl8139
+cptval_v2recv: cpbuild
+	./tval_v2recv
+
 # Test if % is installed, recommand to use ${DEP_CMD} otherwise
 ${REQ_CMD_TARGETS}: check_dep_%:
 	@which $* 2>&1 > /dev/null || (echo -e "\n(ERROR) couldn\'t find $*, considere installing all dependencies with : \n${DEP_CMD}\n" 1>&2 ; exit 1)
 
 # Check if all dependencies are installed, recommand to use ${DEP_CMD} otherwise
 check_deps: ${REQ_CMD_TARGETS}
-
 
 # Test if all driver files are formatted
 test_format: c_testformat rust_testformat

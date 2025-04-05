@@ -42,6 +42,18 @@ EOF
 	# Force init kill to stop the vm, wait for nc 9998 writing msg to stdout
     sleep 0.5
 	exit 1
+
+elif [ "$1" = "tval_v2send'" ]
+then
+    nc -c 192.168.252.2 9999 << EOF
+tval_v2|send
+EOF
+	exit 1
+
+elif [ "$1" = "tval_v2recv'" ]
+then
+    timeout 2 nc -lnvp 9998
+	exit 1
 fi
 
 exec /bin/sh $@
