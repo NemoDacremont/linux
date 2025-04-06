@@ -147,15 +147,15 @@ cptval_v2send: cpbuild
 
 # Validation test for v2 of the C driver
 ctval_v2recv: cbuild
-	./tval_v2recv
+	sudo ./tval_v2recv
 
 # Validation test for v2 of the rust driver
 rtval_v2recv: rbuild
-	./tval_v2recv
+	sudo ./tval_v2recv
 
 # Used to test if the test works, uses the kernel's official driver for rtl8139
 cptval_v2recv: cpbuild
-	./tval_v2recv
+	sudo ./tval_v2recv
 
 # Test if % is installed, recommand to use ${DEP_CMD} otherwise
 ${REQ_CMD_TARGETS}: check_dep_%:
