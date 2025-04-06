@@ -12,6 +12,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Update apt
+      run: sudo apt update
     - name: Install musl-gcc
       run: sudo apt install musl musl-tools qemu-system libxml2 libelf-dev bc libssl-dev
     - name: Test code formatting
