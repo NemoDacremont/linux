@@ -4,7 +4,6 @@
  * for more information about magic values.
  */
 
-#include "linux/netdevice.h"
 #define DRV_NAME "8139c"
 #define DRV_VERSION "0.0.1"
 
