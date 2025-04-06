@@ -13,6 +13,7 @@
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/io.h>
+// #include "linux/ip.h"
 
 #ifndef MAC_ADDRESS_MESSAGE
 #define MAC_ADDRESS_MESSAGE \
@@ -101,6 +102,81 @@ static void print_packet(void *ptr, unsigned int length)
 	pr_debug("\n");
 }
 
+static unsigned int receive_handler(struct net_device *dev, u16 status)
+{
+	struct rtl8139c_priv *priv = netdev_priv(dev);
+
+	if (status & (RxOvw | RxOK)) {
+		// Reset ROK
+		// Overrides everything else!
+		writew(0x01, priv->hwmem + ISR);
+	}
+
+	unsigned char buf_empty = readb(priv->hwmem + ChipCmd);
+
+	if (status & RxOK) {
+		u16 CAPR_read;
+		u16 start_offset;
+
+		u16 *header_ptr;
+		u16 length;
+
+		do {
+			CAPR_read = readw(priv->hwmem + CAPR);
+			// pr_info("CAPR: %d\n", CAPR_read);
+
+			// Make the arithmetic here to guarantee wrapping!
+			start_offset = CAPR_read + 16;
+
+			header_ptr =
+				(u16 *)((u8 *)priv->rx_ring + start_offset);
+			length = *(header_ptr + 1);
+
+			pr_debug("Size of received packet: %d\n", length);
+			// pr_debug("Received packet:");
+			// print_packet(header_ptr + 2, length - 4);
+
+			// Allocate a sk_buff
+			struct sk_buff *skb =
+				netdev_alloc_skb_ip_align(dev, length - 4);
+			// Copy raw packet to sk_buff
+			skb_copy_to_linear_data(skb, header_ptr + 2,
+						length - 4);
+			// Tell sk_buff to consume copied data
+			skb_put(skb, length - 4);
+
+			// TO REVIEW
+			skb->ip_summed = CHECKSUM_UNNECESSARY;
+
+			// Parse protocol
+			skb->protocol = eth_type_trans(skb, dev);
+
+			// Debug
+			// struct iphdr *iph = ip_hdr(skb);
+			// pr_debug("skb proto: %d\n", iph->protocol);
+
+			// Send it to upper layer
+			int res = netif_receive_skb(skb);
+			pr_debug("netif receive status: %d\n", res);
+
+			// Move CAPR after the read packet
+			writew((CAPR_read + length + 4 + 3) & 0xFFFC,
+			       priv->hwmem + CAPR);
+			// Update status of empty receive buffer, should become empty (1) very fast
+			buf_empty = readb(priv->hwmem + ChipCmd);
+		} while (buf_empty == 0);
+	}
+
+	if (status & RxErr) {
+		pr_info("Error in reception");
+	}
+	if (status & RxOvw) {
+		pr_info("Overflow during reception");
+	}
+
+	return 0;
+}
+
 static irqreturn_t interrupt_handler(int irq, void *dev_instance)
 {
 	pr_info("\b[RTL8139c] interrupted\n");
@@ -109,16 +185,9 @@ static irqreturn_t interrupt_handler(int irq, void *dev_instance)
 	struct rtl8139c_priv *priv = netdev_priv(dev);
 
 	u16 status = readw(priv->hwmem + ISR);
-	writew(0x05, priv->hwmem + ISR);
 
-	if (status & RxOK) {
-		pr_info("Packet received !");
-	}
-	if (status & RxErr) {
-		pr_info("Error in reception");
-	}
-	if (status & RxOvw) {
-		pr_err("Overflow during reception");
+	if (status & (RxOK | RxErr | RxOvw)) {
+		receive_handler(dev, status);
 	}
 
 	return IRQ_HANDLED;
