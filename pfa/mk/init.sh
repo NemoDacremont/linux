@@ -50,7 +50,7 @@ EOF
 
 elif [ "$1" = "tval_v2recv'" ]
 then
-    timeout 2 nc -lnvp 9998
+    timeout 2 nc -lnvu -p 9999
 	exit 1
 fi
 
