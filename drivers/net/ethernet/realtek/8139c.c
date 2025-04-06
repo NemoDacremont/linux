@@ -88,6 +88,19 @@ static int rtl8139c_dev_init(struct net_device *dev)
 	return 0;
 }
 
+/**
+ * @brief Handy function to print a packet by hexadecimal groups
+ * 
+ * @param ptr Pointer to packet data
+ * @param length Length of packet
+ */
+static void print_packet(void *ptr, unsigned int length)
+{
+	for (size_t i = 0; i < length; ++i)
+		pr_debug("%02X ", *((u8 *)ptr + i));
+	pr_debug("\n");
+}
+
 static irqreturn_t interrupt_handler(int irq, void *dev_instance)
 {
 	pr_info("\b[RTL8139c] interrupted\n");
@@ -160,6 +173,10 @@ static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *pkt,
 				       struct net_device *dev)
 {
 	pr_info("\b[RTL8139c] Packet emitted lol\n");
+
+	// Try to print packet
+	// pr_debug("Packet emitted: ");
+	// print_packet(pkt->data, pkt->len);
 
 	return NETDEV_TX_OK;
 }
