@@ -49,7 +49,10 @@ enum IntrStatus {
 
 enum RxConfig {
 	/* RxConfig register */
+	// Bits 11 and 12 to 1
 	RxBufferLengthMax = 0x1800,
+	// Bits 11 and 12 to 0
+	RxBufferLengthMin = ~RxBufferLengthMax,
 	RxWrap = 0x80,
 	RxCfgFIFOShift = 13, /* Shift, to get Rx FIFO thresh value */
 	RxCfgDMAShift = 8, /* Shift, to get Rx Max DMA value */
@@ -114,7 +117,8 @@ static int rtl8139c_open(struct net_device *dev)
 	pr_info("\b[RTL8139c] open\n");
 	struct rtl8139c_priv *priv = netdev_priv(dev);
 
-	priv->rx_ring = dma_alloc_coherent(&priv->pdev->dev, 1000000,
+	priv->rx_ring = dma_alloc_coherent(&priv->pdev->dev,
+					   8 * 1024 + 16 + 1536,
 					   &priv->dma_handle, GFP_KERNEL);
 	writel(priv->dma_handle, priv->hwmem + RBSTART);
 
@@ -126,8 +130,9 @@ static int rtl8139c_open(struct net_device *dev)
 		pr_err("\b[RTL8139c] Open error on request_irq \n");
 
 	int rx_config_read = readl(priv->hwmem + RxConfig);
-	writel(rx_config_read | RxBufferLengthMax | RxWrap | AcceptBroadcast |
-		       AcceptMulticast | AcceptMyPhys,
+	writel((rx_config_read | RxWrap | AcceptBroadcast | AcceptMulticast |
+		AcceptMyPhys) &
+		       RxBufferLengthMin,
 	       priv->hwmem + RxConfig);
 
 	writew(0xfff0, priv->hwmem + CAPR);
