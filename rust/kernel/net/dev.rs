@@ -244,6 +244,13 @@ impl<T: DeviceOperations> Device<T> {
         Ok(())
     }
 
+    /// Gets the name of a device.
+    pub fn get_name(&self) -> &'static CStr {
+        unsafe {
+            CStr::from_bytes_with_nul(&(*self.ptr).name).expect("Invalid name")
+        }
+    }
+
     /// Sets carrier.
     pub fn netif_carrier_on(&mut self) {
         // SAFETY: The type invariants guarantee that `self.ptr` is valid.

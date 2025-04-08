@@ -14,6 +14,9 @@ use core::{ffi::c_uchar, fmt, hint::black_box};
 use kernel::{
     c_str,
     devres::Devres,
+    dma::*,
+    error::Error,
+    irq::request::{Handler, IrqReturn, Registration, flags},
     net::{
         self,
         dev::{DeviceOperations, SkBuff, TxCode},
@@ -71,12 +74,51 @@ enum ChipCmdBits {
     RxBufEmpty = 0x01,
 }
 
+enum IntrStatus {
+    RxOvw = (1 << 4),
+    RxErr = (1 << 1),
+    RxOk = (1 << 0),
+}
+
+enum RxConfig {
+    /* RxConfig register */
+    // Bits 11 and 12 to 1
+    RxBufferLengthMax = 0x1800,
+    // Bits 11 and 12 to 0
+    RxBufferLengthMin = !0x1800,
+    RxWrap = 0x80,
+    AcceptErr = 0x20, /* Accept packets with CRC errors */
+    AcceptRunt = 0x10, /* Accept runt (<64 bytes) packets */
+    AcceptBroadcast = 0x08, /* Accept broadcast packets */
+    AcceptMulticast = 0x04, /* Accept multicast packets */
+    AcceptMyPhys = 0x02, /* Accept pkts with our MAC as dest */
+    AcceptAllPhys = 0x01, /* Accept all pkts w/ physical dest */
+}
+
 type Bar1 = pci::Bar<{ Regs::END }>;
 
 /// Driver private data
 struct DriverData {
     pdev: pci::Device,
     bar: Devres<Bar1>,
+    dma_handle: Option<CoherentAllocation<u64>>,
+}
+
+struct InterruptHandler {
+}
+
+impl Handler for InterruptHandler {
+
+    fn handle_irq(&self) -> IrqReturn {
+        // let priv_data = dev.drv_priv_data();
+        // let bar = priv_data.bar.try_access().ok_or(())?;
+        // let status = bar.readw(Regs::INTR_STATUS);
+        // if status & (IntrStatus::RxOvw as u16 | IntrStatus::RxOk as u16 | IntrStatus::RxErr as u16) != 0 {
+        //     // receive_handler(dev, status);
+        // }
+        IrqReturn::Handled
+    }
+
 }
 
 #[vtable]
@@ -87,9 +129,36 @@ impl DeviceOperations for DriverData {
         Ok(())
     }
 
-    fn open(dev: &mut net::dev::Device<DriverData>) -> Result {
+    fn open(dev: &mut net::dev::Device<DriverData>) -> Result<(), Error> {
         let priv_data = dev.drv_priv_data();
+        // change Error later
+        let bar = priv_data.bar.try_access().ok_or(Error::from_errno(1))?;
         dev_info!(priv_data.pdev.as_ref(), "open called from device ops!\n");
+        // priv_data.dma_handle = // TODO : mutability error
+            Some(CoherentAllocation::<u8>::alloc_coherent(
+                priv_data.pdev.as_ref(),
+                8 * 1024 + 16 + 1536,
+                GFP_KERNEL
+            )?);
+        // bar.writel(priv_data.dma_handle, Regs::RX_BUF); // TODO : To adapt
+        bar.writew(ChipCmdBits::CmdReset as u16, Regs::CHIP_CMD);
+
+        Registration::register(
+            888, // TODO : get irq from pdev
+            flags::SHARED,
+            dev.get_name(),
+            InterruptHandler {}
+        ); // TODO : check if an error has been raised
+        // if (rc)
+            // pr_err("\b[RTL8139c] Open error on request_irq \n");
+
+        let rx_config_read = bar.readl(Regs::RX_CONFIG);
+        bar.writel((rx_config_read | RxConfig::RxWrap as u32 | RxConfig::AcceptBroadcast as u32 | RxConfig::AcceptMulticast as u32 | RxConfig::AcceptMyPhys as u32) & RxConfig::RxBufferLengthMin as u32, Regs::RX_CONFIG);
+
+        bar.writew(0xFFF0, Regs::RX_BUF_PTR);
+
+        bar.writew(IntrStatus::RxOvw as u16 | IntrStatus::RxOk as u16 | IntrStatus::RxErr as u16, Regs::INTR_MASK);
+
         Ok(())
     }
 
@@ -175,7 +244,7 @@ impl DriverData {
         }
 
         dev_info!(pdev.as_ref(), "init done!\n");
-        Ok(Self { pdev, bar: bar_res })
+        Ok(Self { pdev, bar: bar_res, dma_handle: None })
     }
 
     fn mac(&self) -> Result<MacAddress, MacGetError> {
