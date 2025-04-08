@@ -1090,18 +1090,44 @@ void device_del(struct device *dev);
 
 DEFINE_FREE(device_del, struct device *, if (_T) device_del(_T))
 
-int device_for_each_child(struct device *dev, void *data,
-			  int (*fn)(struct device *dev, void *data));
-int device_for_each_child_reverse(struct device *dev, void *data,
-				  int (*fn)(struct device *dev, void *data));
+int device_for_each_child(struct device *parent, void *data,
+			  device_iter_t fn);
+int device_for_each_child_reverse(struct device *parent, void *data,
+				  device_iter_t fn);
 int device_for_each_child_reverse_from(struct device *parent,
-				       struct device *from, const void *data,
-				       int (*fn)(struct device *, const void *));
-struct device *device_find_child(struct device *dev, void *data,
-				 int (*match)(struct device *dev, void *data));
-struct device *device_find_child_by_name(struct device *parent,
-					 const char *name);
-struct device *device_find_any_child(struct device *parent);
+				       struct device *from, void *data,
+				       device_iter_t fn);
+struct device *device_find_child(struct device *parent, const void *data,
+				 device_match_t match);
+/**
+ * device_find_child_by_name - device iterator for locating a child device.
+ * @parent: parent struct device
+ * @name: name of the child device
+ *
+ * This is similar to the device_find_child() function above, but it
+ * returns a reference to a device that has the name @name.
+ *
+ * NOTE: you will need to drop the reference with put_device() after use.
+ */
+static inline struct device *device_find_child_by_name(struct device *parent,
+						       const char *name)
+{
+	return device_find_child(parent, name, device_match_name);
+}
+
+/**
+ * device_find_any_child - device iterator for locating a child device, if any.
+ * @parent: parent struct device
+ *
+ * This is similar to the device_find_child() function above, but it
+ * returns a reference to a child device, if any.
+ *
+ * NOTE: you will need to drop the reference with put_device() after use.
+ */
+static inline struct device *device_find_any_child(struct device *parent)
+{
+	return device_find_child(parent, NULL, device_match_any);
+}
 
 int device_rename(struct device *dev, const char *new_name);
 int device_move(struct device *dev, struct device *new_parent,

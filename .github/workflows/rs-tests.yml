@@ -1,4 +1,4 @@
-name: C tests
+name: Rust tests
 
 on:
   workflow_dispatch:

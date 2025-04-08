@@ -19,7 +19,7 @@ LLVM=llvm-19.1.7-rust-1.84.0-x86_64
 
 LLVM_TAR=${LLVM}.tar.gz
 LLVM_TAR_URL_PREFIX=https://mirrors.edge.kernel.org/pub/tools/llvm/rust/files
-llvm_prefix=${PWD}/${BUILD_DIR}/${LLVM}
+llvm_prefix=$(shell pwd)/${BUILD_DIR}/${LLVM}
 build_path=${llvm_prefix}/bin:${PATH}
 libclang_path=${llvm_prefix}/lib/libclang.so
 
