@@ -282,7 +282,6 @@ static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *skb,
 	struct rtl8139c_priv *priv = netdev_priv(dev);
 	pr_info(">>> xmit packet len=%d\n", skb->len);
 
-	// convertir option en u32 + len
 
 	unsigned int entry = priv->tx_head;
 	unsigned int next = (entry + 1) % NUM_TX_DESC;
@@ -294,17 +293,22 @@ static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *skb,
 		return NETDEV_TX_BUSY;
 	}
 
+	// copie dans le buffer DMA
 	skb_copy_and_csum_dev(skb, priv->tx_ring + (entry * TX_BUF_SIZE));
-	pr_info("on passe la, entry %d\n", entry);
-	u32 status = readw(priv->hwmem + TxStatus0 + (entry * sizeof(u32)));
-	pr_info("status1: %d", status);
-	writew((status | skb->len | ((0x100 << 11) & 0x003f0000)) & ~(1 << 13),
-	       priv->hwmem + TxStatus0 + (entry * sizeof(u32)));
-	status = readw(priv->hwmem + TxStatus0 + (entry * sizeof(u32)));
-	pr_info("status2: %d", status);
-
-	// store skb to free
 	priv->tx_skb[entry] = skb;
+
+	// @ physique du buffer
+	writel(priv->tx_ring_dma + (entry * TX_BUF_SIZE),
+	       priv->hwmem + TxAddr0 + (entry * 4));
+
+
+	// bit 0–12 : taille
+	// bit 16–21 : Tx Threshold 
+	// bit 13 (OWN=0) => démarre transmission
+	u32 tsd = skb->len & 0x1FFF;         // Taille
+	tsd |= (0x3F << 16);                 // Threshold max
+
+	writel(tsd, priv->hwmem + TxStatus0 + (entry * 4));
 
 	priv->tx_head = next;
 	pr_info(">>> xmit end");
@@ -327,6 +331,7 @@ static irqreturn_t rtl8139c_interrupt(
 		       ISR); // as in official, uses to clear 1 bits to 0. prevent loop interrupt
 
 	if (status & (1 << 2)) // TxOK
+		pr_info("INTERRUPT STATUS: 0x%x\n", status);
 		rtl8139c_tx_interrupt(
 			dev); // has to do everything necessary when txOk, means free, moove pointer..
 
@@ -337,8 +342,7 @@ static void rtl8139c_tx_interrupt(struct net_device *dev)
 {
 	struct rtl8139c_priv *priv = netdev_priv(dev);
 
-	while (priv->tx_tail !=
-	       priv->tx_head) { // while there are still descriptor treated by card
+	while (priv->tx_tail != priv->tx_head) { // while there are still descriptor treated by card
 		unsigned int entry = priv->tx_tail;
 
 		// if card has descripor (OWN=1) we stop
@@ -349,6 +353,7 @@ static void rtl8139c_tx_interrupt(struct net_device *dev)
 		if (priv->tx_skb[entry]) {
 			dev_kfree_skb(priv->tx_skb[entry]);
 			priv->tx_skb[entry] = NULL;
+			pr_info("freed skb at entry %u\n", entry);
 		}
 
 		// next
