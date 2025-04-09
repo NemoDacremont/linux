@@ -13,10 +13,10 @@ exec_test ()
 {
     sudo timeout 10 qemu-system-x86_64 ${most_qemu_args} -append "console=ttyS0 panic=-1 loglevel=15 init='/init tval_v2send'" &
 
-    sleep 0.2  # It's annoying to find a better way
+    sleep 0.5  # It's annoying to find a better way
     sudo ip a add dev tap0 192.168.252.2/24
 
-    timeout 10 nc -lnvp 9999 2>/dev/null | grep "tval_v2|send" && echo "OK - tvalv2 send" || echo "NOK - tvalv2 send"
+    timeout 10 nc -lnvu -p 9999 | grep "tvalv2|send" && echo "OK - tvalv2 send" || echo "NOK - tvalv2 send"
     wait
 }
 

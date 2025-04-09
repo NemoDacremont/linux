@@ -1,4 +1,5 @@
 BUILD_DIR?=build
+SRC_DIR?=src
 LINUX_PATH?=..
 MK_PATH?=mk
 

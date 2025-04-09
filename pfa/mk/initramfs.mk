@@ -8,6 +8,7 @@
 #
 
 BUILD_DIR?=../build
+SRC_DIR?=../src
 MK_PATH?=.
 
 include ${MK_PATH}/busybox.mk
@@ -23,16 +24,22 @@ initramfs_all: initramfs_build
 initramfs_build: busybox_build initramfs_create_root initramfs_create_cpio
 
 
-initramfs_create_root: busybox_build ${BUILD_DIR}/initramfs ${BUILD_DIR}/initramfs/init
+initramfs_create_root: busybox_build ${BUILD_DIR}/send_udp ${BUILD_DIR}/initramfs ${BUILD_DIR}/initramfs/init
 
 # Begin of initramfs_root
 # **Make sure busybox_build as been called before**, otherwise it will not
 # create initramfs correctly
-${BUILD_DIR}/initramfs:
+${BUILD_DIR}/initramfs: ${BUILD_DIR}/initramfs/send_udp
 	@# Create usual Linux directories
 	mkdir -p $@/bin $@/sbin $@/etc $@/proc $@/sys $@/dev $@/usr/bin $@/usr/sbin
 	@# Copy busybox applets to ramfs
 	cp -a ${BUSYBOX__INSTALL_PATH}/* $@
+
+${BUILD_DIR}/send_udp: ${SRC_DIR}/send_udp.c
+	$(CC) -o $@ $^ -static
+
+${BUILD_DIR}/initramfs/send_udp: ${BUILD_DIR}/send_udp
+	cp -a $^ $@
 
 # copy the init.sh into the final directory
 ${BUILD_DIR}/initramfs/init: ${BUILD_DIR}/initramfs ${MK_PATH}/init.sh  # make sure iniramfs directory exists

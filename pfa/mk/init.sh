@@ -43,9 +43,9 @@ EOF
 
 elif [ "$1" = "tval_v2send'" ]
 then
-    nc 192.168.252.2 9999 << EOF
-tval_v2|send
-EOF
+    /send_udp
+    ls /send_udp
+    sleep 0.5
 	exit 1
 
 elif [ "$1" = "tval_v2recv'" ]
