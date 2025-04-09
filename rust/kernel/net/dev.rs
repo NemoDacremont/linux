@@ -218,12 +218,12 @@ impl<T: DeviceOperations> Device<T> {
     }
 
     /// Gets the private data of a device driver.
-    pub fn drv_priv_data(&self) -> <KBox<T> as ForeignOwnable>::Borrowed<'_> {
+    pub fn drv_priv_data(&self) -> <KBox<T> as ForeignOwnable>::BorrowedMut<'_> {
         // SAFETY: The type invariants guarantee that self.ptr is valid and
         // bindings::netdev_priv(self.ptr) returns a pointer that stores an address
         // returned by `ForeignOwnable::into_foreign()`.
         unsafe {
-            KBox::<T>::borrow(core::ptr::read(
+            KBox::<T>::borrow_mut(core::ptr::read(
                 bindings::netdev_priv(self.ptr) as *const *mut c_void
             ))
         }
@@ -246,9 +246,7 @@ impl<T: DeviceOperations> Device<T> {
 
     /// Gets the name of a device.
     pub fn get_name(&self) -> &'static CStr {
-        unsafe {
-            CStr::from_bytes_with_nul(&(*self.ptr).name).expect("Invalid name")
-        }
+        unsafe { CStr::from_bytes_with_nul(&(*self.ptr).name).expect("Invalid name") }
     }
 
     /// Sets carrier.

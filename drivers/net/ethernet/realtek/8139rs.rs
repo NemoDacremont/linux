@@ -101,22 +101,37 @@ type Bar1 = pci::Bar<{ Regs::END }>;
 struct DriverData {
     pdev: pci::Device,
     bar: Devres<Bar1>,
-    dma_handle: Option<CoherentAllocation<u64>>,
+    dma_handle: CoherentAllocation<u64>,
 }
 
-struct InterruptHandler {}
+struct InterruptHandler {
+    dev: net::dev::Device<DriverData>,
+}
+
+impl InterruptHandler {
+    fn receive_handler(&self, status: u16) -> usize {
+        0xDEAD
+    }
+}
 
 impl Handler for InterruptHandler {
     fn handle_irq(&self) -> IrqReturn {
-        // let priv_data = dev.drv_priv_data();
-        // let bar = priv_data.bar.try_access().ok_or(IrqReturn::None)?;
-        // let status = bar.readw(Regs::INTR_STATUS);
-        // if status & (IntrStatus::RxOvw as u16 | IntrStatus::RxOk as u16 | IntrStatus::RxErr as u16)
-        //     != 0
-        // {
-        //     // receive_handler(dev, status);
-        // }
-        IrqReturn::Handled
+        let priv_data = self.dev.drv_priv_data();
+        match priv_data.bar.try_access().ok_or(IrqReturn::None) {
+            Ok(bar) => {
+                let status = bar.readw(Regs::INTR_STATUS);
+                if status
+                    & (IntrStatus::RxOvw as u16
+                        | IntrStatus::RxOk as u16
+                        | IntrStatus::RxErr as u16)
+                    != 0
+                {
+                    self.receive_handler(status);
+                }
+                IrqReturn::Handled
+            }
+            Err(ret) => ret,
+        }
     }
 }
 
@@ -131,22 +146,17 @@ impl DeviceOperations for DriverData {
     fn open(dev: &mut net::dev::Device<DriverData>) -> Result<(), Error> {
         let priv_data = dev.drv_priv_data();
         // change Error later
-        let bar = priv_data.bar.try_access().ok_or(Error::from_errno(1))?;
+        let bar = priv_data.bar.try_access().ok_or(ENXIO)?;
         dev_info!(priv_data.pdev.as_ref(), "open called from device ops!\n");
-        // priv_data.dma_handle = // TODO : mutability error
-        CoherentAllocation::<u8>::alloc_coherent(
-            priv_data.pdev.as_ref(),
-            8 * 1024 + 16 + 1536,
-            GFP_KERNEL,
-        )?;
-        // bar.writel(priv_data.dma_handle, Regs::RX_BUF); // TODO : To adapt
+
+        bar.writel(priv_data.dma_handle.start_ptr() as u32, Regs::RX_BUF);
         bar.writeb(ChipCmdBits::CmdReset as u8, Regs::CHIP_CMD);
 
         // Registration::register(
         //     888, // TODO : get irq from pdev
         //     flags::SHARED,
         //     dev.get_name(),
-        //     InterruptHandler {},
+        //     InterruptHandler { dev },
         // ); // TODO : check if an error has been raised
         // if (rc)
         // pr_err("\b[RTL8139c] Open error on request_irq \n");
@@ -253,11 +263,15 @@ impl DriverData {
             return Err(InitError::SoftwareResetStuck);
         }
 
+        let dma_handle =
+            CoherentAllocation::alloc_coherent(pdev.as_ref(), 8 * 1024 + 16 + 1536, GFP_KERNEL)
+                .map_err(|_| InitError::BarRevoked)?;
+
         dev_info!(pdev.as_ref(), "init done!\n");
         Ok(Self {
             pdev,
             bar: bar_res,
-            dma_handle: None,
+            dma_handle,
         })
     }
 
