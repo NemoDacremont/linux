@@ -140,16 +140,21 @@ impl Handler for InterruptHandler {
                 let capr = bar.readw(Regs::CAPR);
                 let start_offset = capr.wrapping_add(16);
                 // Qemu source says this is offset by 16 bits
-                let header = unsafe {
+                let header_ptr = unsafe {
                     priv_data.dma_handle.start_ptr().add(start_offset as usize) as *const u16
                 };
-                let length = unsafe { header.wrapping_add(1).read_volatile() };
+                let length = unsafe { header_ptr.wrapping_add(1).read_volatile() } as usize;
 
                 dev_info!(
                     priv_data.pdev.as_ref(),
                     "Size of received packet: {}\n",
                     length
                 );
+
+                let packet = unsafe {
+                    core::slice::from_raw_parts(header_ptr.add(2) as *const u8, length - 4)
+                };
+                dev_info!(priv_data.pdev.as_ref(), "packet: {:X?}\n", packet);
 
                 is_rx_buff_empty = bar.readb(Regs::CHIP_CMD) != 0;
             }
