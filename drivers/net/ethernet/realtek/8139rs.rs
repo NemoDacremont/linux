@@ -35,7 +35,7 @@ impl Regs {
     const TX_ADDR0: usize = 0x20; /* Tx descriptors (also four 32bit). */
     const RX_BUF: usize = 0x30;
     const CHIP_CMD: usize = 0x37;
-    const RX_BUF_PTR: usize = 0x38;
+    const CAPR: usize = 0x38;
     const RX_BUF_ADDR: usize = 0x3A;
     const INTR_MASK: usize = 0x3C;
     const INTR_STATUS: usize = 0x3E;
@@ -102,34 +102,59 @@ type Bar1 = pci::Bar<{ Regs::END }>;
 struct DriverData {
     pdev: pci::Device,
     bar: Devres<Bar1>,
-    dma_handle: CoherentAllocation<u64>,
+    dma_handle: CoherentAllocation<u8>,
 }
 
 struct InterruptHandler {
     ndev: Pin<KBox<Mutex<net::dev::Device<DriverData>>>>,
 }
 
+// fn handle_receive(ndev_lock: Guard)
+
 impl Handler for InterruptHandler {
     fn handle_irq(&self) -> IrqReturn {
         let ndev_lock = self.ndev.lock();
-        {
-            dev_info!(ndev_lock.drv_priv_data().pdev.as_ref(), "irq!\n");
+        let priv_data = ndev_lock.drv_priv_data();
+        dev_info!(priv_data.pdev.as_ref(), "irq!\n");
+        let bar = if let Some(bar) = priv_data.bar.try_access() {
+            bar
+        } else {
+            dev_err!(
+                priv_data.pdev.as_ref(),
+                "couldn't access bar in irq handler!\n"
+            );
+            return IrqReturn::None;
+        };
+
+        let status = bar.readw(Regs::INTR_STATUS);
+        if status & (IntrStatus::RxOvw as u16 | IntrStatus::RxOk as u16) != 0 {
+            bar.writew(0x01, Regs::INTR_STATUS);
         }
-        // match priv_data.bar.try_access().ok_or(IrqReturn::None) {
-        //     Ok(bar) => {
-        //         let status = bar.readw(Regs::INTR_STATUS);
-        //         if status
-        //             & (IntrStatus::RxOvw as u16
-        //                 | IntrStatus::RxOk as u16
-        //                 | IntrStatus::RxErr as u16)
-        //             != 0
-        //         {
-        //             self.receive_handler(status);
-        //         }
-        //         IrqReturn::Handled
-        //     }
-        //     Err(ret) => ret,
-        // }
+
+        // unsigned char buf_empty = readb(priv->hwmem + ChipCmd);
+        // let mut is_rx_buff_empty = bar.readb(Regs::CHIP_CMD) != 0;
+        let mut is_rx_buff_empty = false;
+        pr_err!("status={} is_empty={}\n", status, is_rx_buff_empty);
+        if (status & IntrStatus::RxOk as u16) != 0 {
+            while !is_rx_buff_empty {
+                let capr = bar.readw(Regs::CAPR);
+                let start_offset = capr.wrapping_add(16);
+                // Qemu source says this is offset by 16 bits
+                let header = unsafe {
+                    priv_data.dma_handle.start_ptr().add(start_offset as usize) as *const u16
+                };
+                let length = unsafe { header.wrapping_add(1).read_volatile() };
+
+                dev_info!(
+                    priv_data.pdev.as_ref(),
+                    "Size of received packet: {}\n",
+                    length
+                );
+
+                is_rx_buff_empty = bar.readb(Regs::CHIP_CMD) != 0;
+            }
+        }
+
         IrqReturn::Handled
     }
 }
@@ -162,7 +187,7 @@ impl DeviceOperations for DriverData {
             Regs::RX_CONFIG,
         );
 
-        bar.writew(0xFFF0, Regs::RX_BUF_PTR);
+        bar.writew(0xFFF0, Regs::CAPR);
 
         bar.writew(
             IntrStatus::RxOvw as u16 | IntrStatus::RxOk as u16 | IntrStatus::RxErr as u16,
