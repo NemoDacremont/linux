@@ -10,7 +10,7 @@
 //! ping 192.168.100.1
 //! ```
 
-use core::{ffi::c_uchar, fmt, hint::black_box};
+use core::{fmt, hint::black_box};
 use kernel::{
     c_str,
     devres::Devres,
@@ -21,8 +21,9 @@ use kernel::{
         self,
         dev::{DeviceOperations, SkBuff, TxCode},
     },
-    pci,
+    new_mutex, pci,
     prelude::*,
+    sync::Mutex,
 };
 
 struct Regs;
@@ -105,33 +106,31 @@ struct DriverData {
 }
 
 struct InterruptHandler {
-    dev: net::dev::Device<DriverData>,
-}
-
-impl InterruptHandler {
-    fn receive_handler(&self, status: u16) -> usize {
-        0xDEAD
-    }
+    ndev: Pin<KBox<Mutex<net::dev::Device<DriverData>>>>,
 }
 
 impl Handler for InterruptHandler {
     fn handle_irq(&self) -> IrqReturn {
-        let priv_data = self.dev.drv_priv_data();
-        match priv_data.bar.try_access().ok_or(IrqReturn::None) {
-            Ok(bar) => {
-                let status = bar.readw(Regs::INTR_STATUS);
-                if status
-                    & (IntrStatus::RxOvw as u16
-                        | IntrStatus::RxOk as u16
-                        | IntrStatus::RxErr as u16)
-                    != 0
-                {
-                    self.receive_handler(status);
-                }
-                IrqReturn::Handled
-            }
-            Err(ret) => ret,
+        let ndev_lock = self.ndev.lock();
+        {
+            dev_info!(ndev_lock.drv_priv_data().pdev.as_ref(), "irq!\n");
         }
+        // match priv_data.bar.try_access().ok_or(IrqReturn::None) {
+        //     Ok(bar) => {
+        //         let status = bar.readw(Regs::INTR_STATUS);
+        //         if status
+        //             & (IntrStatus::RxOvw as u16
+        //                 | IntrStatus::RxOk as u16
+        //                 | IntrStatus::RxErr as u16)
+        //             != 0
+        //         {
+        //             self.receive_handler(status);
+        //         }
+        //         IrqReturn::Handled
+        //     }
+        //     Err(ret) => ret,
+        // }
+        IrqReturn::Handled
     }
 }
 
@@ -198,8 +197,10 @@ impl DeviceOperations for DriverData {
 }
 
 /// Thing which linux has a reference to
+#[pin_data]
 struct Rtl8139Driver {
-    _ndev: net::dev::Device<DriverData>,
+    #[pin]
+    registration: Registration<InterruptHandler>,
 }
 
 kernel::pci_device_table!(
@@ -320,7 +321,24 @@ impl pci::Driver for Rtl8139Driver {
         ndev.register()?;
         dev_info!(pdev.as_ref(), "registered!\n");
 
-        Ok(KBox::new(Rtl8139Driver { _ndev: ndev }, GFP_KERNEL)?.into())
+        let handler = InterruptHandler {
+            ndev: KBox::pin_init(new_mutex!(ndev), GFP_KERNEL)?,
+        };
+
+        use kernel::error::Error;
+
+        Ok(KBox::pin_init(
+            try_pin_init!(Rtl8139Driver {
+                registration <- Registration::register(
+                    15, // TODO : get irq from pdev
+                    flags::SHARED,
+                    c_str!("rust_rtl8139_driver"),
+                    handler,
+                ),
+            }? Error),
+            GFP_KERNEL,
+        )
+        .unwrap())
     }
 }
 
