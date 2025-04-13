@@ -330,7 +330,7 @@ impl pci::Driver for Rtl8139Driver {
         Ok(KBox::pin_init(
             try_pin_init!(Rtl8139Driver {
                 registration <- Registration::register(
-                    15, // TODO : get irq from pdev
+                    pdev.irq(), // TODO : get irq from pdev
                     flags::SHARED,
                     c_str!("rust_rtl8139_driver"),
                     handler,
