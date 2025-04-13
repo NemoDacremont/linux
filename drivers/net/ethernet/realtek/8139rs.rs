@@ -158,7 +158,11 @@ impl Handler for InterruptHandler {
 
                 let skb = ndev_lock.new_skb_from_slice(packet);
                 dev_info!(priv_data.pdev.as_ref(), "skb data: {:X?}\n", skb.data());
-                skb.consume(); // IMPORTANT
+                ndev_lock.netif_receive_skb(skb);
+
+                // Crash but if commented then kernel crash at the second received packet
+                bar.writew((capr + (length as u16) + 4 + 3) & 0xFFFC,  // Why 0xFFFC ?!
+                           Regs::CAPR);
 
                 is_rx_buff_empty = bar.readb(Regs::CHIP_CMD) != 0;
             }

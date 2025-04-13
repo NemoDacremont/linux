@@ -16,6 +16,16 @@ void rust_helper_skb_tx_timestamp(struct sk_buff *skb)
 	skb_tx_timestamp(skb);
 }
 
+void rust_helper_set_skb_ip_summed(struct sk_buff *skb, unsigned char ip_summed)
+{
+	skb->ip_summed = ip_summed;
+}
+
+void rust_helper_set_skb_protocol(struct sk_buff *skb, unsigned short protocol)
+{
+	skb->protocol = protocol;
+}
+
 void rust_helper_kfree_skb_reason(struct sk_buff *skb,
 				  enum skb_drop_reason reason)
 {

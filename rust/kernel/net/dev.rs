@@ -261,6 +261,16 @@ impl<T: DeviceOperations> Device<T> {
         unsafe { bindings::netif_carrier_off(self.ptr) }
     }
 
+    /// Send skb.
+    pub fn netif_receive_skb(&self, skb: SkBuff) -> i32 {
+        // SAFETY: The type invariants guarantee that `self.ptr` is valid.
+        unsafe {
+            let result = bindings::netif_receive_skb(skb.as_raw());
+            skb.consume();
+            result
+        }
+    }
+
     /// Sets the max mtu of the device.
     pub fn set_max_mtu(&mut self, max_mtu: u32) {
         // SAFETY: The type invariants guarantee that `self.ptr` is valid.
@@ -423,12 +433,9 @@ impl<T: DeviceOperations> Device<T> {
         skb.put(len); // increment skb data len
         skb.data_mut().copy_from_slice(data); // so that it matches here for rust slice copy's len checks
 
-        // skb->ip_summed = CHECKSUM_UNNECESSARY;
-        // Parse protocol
-        // skb->protocol = eth_type_trans(skb, dev);
-        // unsafe {
-        //     (*skb.0). = bindings::CHECKSUM_UNNECESSARY;
-        // }
+        skb.ip_summed(bindings::CHECKSUM_UNNECESSARY as u8);
+        let protocol = unsafe { bindings::eth_type_trans(skb.as_raw(), self.ptr) };
+        skb.protocol(protocol);
 
         skb
     }
@@ -489,7 +496,9 @@ pub enum TxCode {
 /// # Invariants
 ///
 /// The pointer is valid.
-pub struct SkBuff(pub *mut bindings::sk_buff);
+pub struct SkBuff {
+    ptr: *mut bindings::sk_buff
+}
 
 impl SkBuff {
     /// Creates a new [`SkBuff`] instance.
@@ -499,34 +508,53 @@ impl SkBuff {
     /// Callers must ensure that `ptr` must be valid.
     unsafe fn from_ptr(ptr: *mut bindings::sk_buff) -> Self {
         // INVARIANT: The safety requirements ensure the invariant.
-        Self(ptr)
+        Self { ptr }
+    }
+
+    /// Returns the pointer to the `sk_buff` object.
+    pub fn as_raw(&self) -> *mut bindings::sk_buff {
+        self.ptr
+    }
+
+    /// Change `skb->ip_summed` to `val`.
+    pub fn ip_summed(&self, val: u8) -> () {
+        unsafe {
+            bindings::set_skb_ip_summed(self.ptr, val);
+        }
+    }
+
+    /// Change `skb->protocol` to `val`.
+    pub fn protocol(&self, val: u16) -> () {
+        unsafe {
+            bindings::set_skb_protocol(self.ptr, val);
+        }
     }
 
     pub fn data(&self) -> &[u8] {
-        unsafe { core::slice::from_raw_parts((*self.0).data, (*self.0).len as usize) }
+        unsafe { core::slice::from_raw_parts((*self.ptr).data, (*self.ptr).len as usize) }
     }
 
     fn data_mut(&mut self) -> &mut [u8] {
-        unsafe { core::slice::from_raw_parts_mut((*self.0).data, (*self.0).len as usize) }
+        unsafe { core::slice::from_raw_parts_mut((*self.ptr).data, (*self.ptr).len as usize) }
     }
 
     fn put(&mut self, len: usize) {
-        unsafe { bindings::skb_put(self.0, len as u32) };
+        unsafe { bindings::skb_put(self.ptr, len as u32) };
     }
 
     /// Provides a time stamp.
     pub fn tx_timestamp(&mut self) {
         // SAFETY: The type invariants guarantee that `self.0` is valid.
         unsafe {
-            bindings::skb_tx_timestamp(self.0);
+            bindings::skb_tx_timestamp(self.ptr);
         }
     }
 
     /// Consumes a [`sk_buff`] object.
     pub fn consume(self) {
-        // SAFETY: The type invariants guarantee that `self.0` is valid.
+        // SAFETY: The type invariants guarantee that `self.ptr` is valid.
         unsafe {
-            bindings::kfree_skb_reason(self.0, bindings::skb_drop_reason_SKB_CONSUMED);
+            bindings::kfree_skb_reason(self.ptr, bindings::skb_drop_reason_SKB_CONSUMED);
         }
         core::mem::forget(self);
     }
