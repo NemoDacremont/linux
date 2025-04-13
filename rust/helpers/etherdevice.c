@@ -21,3 +21,9 @@ void rust_helper_kfree_skb_reason(struct sk_buff *skb,
 {
 	sk_skb_reason_drop(NULL, skb, reason);
 }
+
+struct sk_buff *rust_helper_netdev_alloc_skb_ip_align(struct net_device *dev,
+		unsigned int length)
+{
+	return netdev_alloc_skb_ip_align(dev, length);
+}

@@ -156,6 +156,10 @@ impl Handler for InterruptHandler {
                 };
                 dev_info!(priv_data.pdev.as_ref(), "packet: {:X?}\n", packet);
 
+                let skb = ndev_lock.new_skb_from_slice(packet);
+                dev_info!(priv_data.pdev.as_ref(), "skb data: {:X?}\n", skb.data());
+                skb.consume(); // IMPORTANT
+
                 is_rx_buff_empty = bar.readb(Regs::CHIP_CMD) != 0;
             }
         }

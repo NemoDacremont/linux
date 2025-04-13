@@ -414,6 +414,24 @@ impl<T: DeviceOperations> Device<T> {
         mem::forget(dev); // dropping a Device<T> frees the private data, unregisters the device & frees the device. We want to avoid that
         res
     }
+
+    pub fn new_skb_from_slice(&self, data: &[u8]) -> SkBuff {
+        let len = data.len();
+        let skb_ptr = unsafe { bindings::netdev_alloc_skb_ip_align(self.ptr, len as u32) };
+        // TODO: check that ptr != NULL
+        let mut skb = unsafe { SkBuff::from_ptr(skb_ptr) };
+        skb.put(len); // increment skb data len
+        skb.data_mut().copy_from_slice(data); // so that it matches here for rust slice copy's len checks
+
+        // skb->ip_summed = CHECKSUM_UNNECESSARY;
+        // Parse protocol
+        // skb->protocol = eth_type_trans(skb, dev);
+        // unsafe {
+        //     (*skb.0). = bindings::CHECKSUM_UNNECESSARY;
+        // }
+
+        skb
+    }
 }
 
 impl<T: DeviceOperations> Drop for Device<T> {
@@ -486,6 +504,14 @@ impl SkBuff {
 
     pub fn data(&self) -> &[u8] {
         unsafe { core::slice::from_raw_parts((*self.0).data, (*self.0).len as usize) }
+    }
+
+    fn data_mut(&mut self) -> &mut [u8] {
+        unsafe { core::slice::from_raw_parts_mut((*self.0).data, (*self.0).len as usize) }
+    }
+
+    fn put(&mut self, len: usize) {
+        unsafe { bindings::skb_put(self.0, len as u32) };
     }
 
     /// Provides a time stamp.
