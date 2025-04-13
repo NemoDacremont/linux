@@ -148,17 +148,8 @@ impl DeviceOperations for DriverData {
         let bar = priv_data.bar.try_access().ok_or(ENXIO)?;
         dev_info!(priv_data.pdev.as_ref(), "open called from device ops!\n");
 
-        bar.writel(priv_data.dma_handle.start_ptr() as u32, Regs::RX_BUF);
-        bar.writeb(ChipCmdBits::CmdReset as u8, Regs::CHIP_CMD);
-
-        // Registration::register(
-        //     888, // TODO : get irq from pdev
-        //     flags::SHARED,
-        //     dev.get_name(),
-        //     InterruptHandler { dev },
-        // ); // TODO : check if an error has been raised
-        // if (rc)
-        // pr_err("\b[RTL8139c] Open error on request_irq \n");
+        bar.writel(priv_data.dma_handle.dma_handle() as u32, Regs::RX_BUF);
+        bar.writeb(ChipCmdBits::CmdRxEnb as u8, Regs::CHIP_CMD);
 
         let rx_config_read = bar.readl(Regs::RX_CONFIG);
         bar.writel(
