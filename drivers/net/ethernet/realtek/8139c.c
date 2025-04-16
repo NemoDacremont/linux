@@ -25,7 +25,6 @@
 	"\b[RTL8139c] MAC address: tval_v0|%02x:%02x:%02x:%02x:%02x:%02x\n"
 #endif // MAC_ADDRESS_MESSAGE
 
-#define NUM_TX_DESC 64
 #define TXPOLL 0x38
 
 /* Number of Tx descriptor registers. */
@@ -108,6 +107,12 @@ MODULE_DEVICE_TABLE(pci, rtl8139c_pci_tbl);
 // To be implemented laterskb
 static int rtl8139c_dev_init(struct net_device *dev)
 {
+	// permet d'indiquer au noyau que le driver ne supporte pas GSO : la segmentation est fait côté noyau et pas côté driver.
+	//pr_info("je passe bien par la fonction init");
+	dev->features &= ~(NETIF_F_TSO | NETIF_F_GSO);
+	dev->hw_features &= ~(NETIF_F_TSO | NETIF_F_GSO);
+	dev->vlan_features &= ~(NETIF_F_TSO | NETIF_F_GSO);
+
 	pr_info("\b[RTL8139c] dev init\n");
 	return 0;
 }
@@ -279,12 +284,22 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *skb,
 				       struct net_device *dev)
 {
+	//skb->len+=5000;
 	struct rtl8139c_priv *priv = netdev_priv(dev);
 	pr_info(">>> xmit packet len=%d\n", skb->len);
 
+	if (skb_shinfo(skb)->nr_frags > 0)
+		pr_info("TX: skb contains %d fragments", skb_shinfo(skb)->nr_frags);
 
 	unsigned int entry = priv->tx_head;
 	unsigned int next = (entry + 1) % NUM_TX_DESC;
+
+    if (skb->len > dev->mtu + ETH_HLEN) { // verif mtu
+        pr_warn("skb too big (%u > %u), error\n", skb->len, dev->mtu);
+        dev_kfree_skb_any(skb);
+        dev->stats.tx_dropped++;
+        return NETDEV_TX_OK;
+    }
 
 	if (next == priv->tx_tail) { // check space
 		// no space => requeue later
