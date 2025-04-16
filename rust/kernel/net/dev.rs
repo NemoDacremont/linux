@@ -266,7 +266,7 @@ impl<T: DeviceOperations> Device<T> {
         // SAFETY: The type invariants guarantee that `self.ptr` is valid.
         unsafe {
             let result = bindings::netif_receive_skb(skb.as_raw());
-            skb.consume();
+            mem::forget(skb);
             result
         }
     }
@@ -497,7 +497,7 @@ pub enum TxCode {
 ///
 /// The pointer is valid.
 pub struct SkBuff {
-    ptr: *mut bindings::sk_buff
+    ptr: *mut bindings::sk_buff,
 }
 
 impl SkBuff {
