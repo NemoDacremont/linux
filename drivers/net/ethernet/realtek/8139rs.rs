@@ -141,6 +141,9 @@ impl Handler for InterruptHandler {
         if status & (interrupt_status::RX_OVERFLOW | interrupt_status::RX_OK) != 0 {
             bar.writew(interrupt_status::RX_OK, Regs::INTR_STATUS);
         }
+        if status & (interrupt_status::TX_OK) != 0 {
+            bar.writew(interrupt_status::TX_OK, Regs::INTR_STATUS);
+        }
 
         // unsigned char buf_empty = readb(priv->hwmem + ChipCmd);
         // let mut is_rx_buff_empty = bar.readb(Regs::CHIP_CMD) != 0;
