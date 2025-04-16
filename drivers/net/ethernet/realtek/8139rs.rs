@@ -10,7 +10,7 @@
 //! ping 192.168.100.1
 //! ```
 
-use core::{fmt, hint::black_box};
+use core::{fmt, hint::black_box, mem};
 use kernel::{
     c_str,
     devres::Devres,
@@ -25,6 +25,12 @@ use kernel::{
     prelude::*,
     sync::Mutex,
 };
+
+/// max supported ethernet frame size. must be at least (mtu + 18 + 4)
+const MAX_ETH_FRAME_SIZE: usize = 1792;
+const TX_BUF_LEN: usize = MAX_ETH_FRAME_SIZE;
+const NUM_TX_BUFS: usize = 4;
+const ALL_TX_BUF_LEN: usize = NUM_TX_BUFS * TX_BUF_LEN;
 
 struct Regs;
 
@@ -103,7 +109,10 @@ type Bar1 = pci::Bar<{ Regs::END }>;
 struct DriverData {
     pdev: pci::Device,
     bar: Devres<Bar1>,
-    dma_handle: CoherentAllocation<u8>,
+    rx_buf_dma_handle: CoherentAllocation<u8>,
+    tx_buf_dma_handle: CoherentAllocation<u8>,
+    tx_buf_head: usize,
+    tx_buf_tail: usize,
 }
 
 struct InterruptHandler {
@@ -142,7 +151,10 @@ impl Handler for InterruptHandler {
                 let start_offset = capr.wrapping_add(16);
                 // Qemu source says this is offset by 16 bits
                 let header_ptr = unsafe {
-                    priv_data.dma_handle.start_ptr().add(start_offset as usize) as *const u16
+                    priv_data
+                        .rx_buf_dma_handle
+                        .start_ptr()
+                        .add(start_offset as usize) as *const u16
                 };
                 let length = unsafe { header_ptr.wrapping_add(1).read_volatile() } as usize;
 
@@ -161,7 +173,6 @@ impl Handler for InterruptHandler {
                 dev_info!(priv_data.pdev.as_ref(), "skb data: {:X?}\n", skb.data());
                 ndev_lock.netif_receive_skb(skb);
 
-                // Crash but if commented then kernel crash at the second received packet
                 bar.writew(
                     capr.wrapping_add(length as u16 + 4 + 3) & 0xFFFC, // Why 0xFFFC ?!
                     Regs::CAPR,
@@ -189,7 +200,17 @@ impl DeviceOperations for DriverData {
         let bar = priv_data.bar.try_access().ok_or(ENXIO)?;
         dev_info!(priv_data.pdev.as_ref(), "open called from device ops!\n");
 
-        bar.writel(priv_data.dma_handle.dma_handle() as u32, Regs::RX_BUF);
+        bar.writel(
+            priv_data.rx_buf_dma_handle.dma_handle() as u32,
+            Regs::RX_BUF,
+        );
+        for i in 0..NUM_TX_BUFS {
+            bar.writel(
+                priv_data.tx_buf_dma_handle.dma_handle() as u32 + (i * TX_BUF_LEN) as u32,
+                Regs::TX_ADDR0 + (i * 4), // each of these registers is 4 bytes
+            );
+        }
+
         bar.writeb(
             ChipCmdBits::CmdRxEnb as u8 | ChipCmdBits::CmdTxEnb as u8,
             Regs::CHIP_CMD,
@@ -216,6 +237,8 @@ impl DeviceOperations for DriverData {
             Regs::INTR_MASK,
         );
 
+        // netif start queue ?
+
         Ok(())
     }
 
@@ -229,7 +252,47 @@ impl DeviceOperations for DriverData {
         let priv_data = dev.drv_priv_data();
         dev_info!(priv_data.pdev.as_ref(), "xmit called from device ops!\n");
         dev_info!(priv_data.pdev.as_ref(), "{:02X?}", skb.data());
+
+        let buf_index = priv_data.tx_buf_head;
+        let next_buf_index = (buf_index + 1) % NUM_TX_BUFS;
+        if next_buf_index == priv_data.tx_buf_tail {
+            dev_info!(priv_data.pdev.as_ref(), "no space for tx\n");
+            // TODO: netif stop queue
+            skb.consume();
+            return TxCode::Busy;
+        }
+
+        let tx_buf = unsafe {
+            core::slice::from_raw_parts_mut(
+                priv_data
+                    .tx_buf_dma_handle
+                    .start_ptr_mut()
+                    .wrapping_add(TX_BUF_LEN * buf_index),
+                TX_BUF_LEN,
+            )
+        };
+        skb.copy_to_with_checksum(tx_buf);
+
+        // TODO: docs
+        let mut tsd: u32 = skb.data().len() as u32 & 0x1FFFu32;
+        tsd |= (0x3F << 16);
+
+        // mem::forget(skb);
         skb.consume();
+
+        match priv_data.bar.try_access() {
+            Some(bar) => {
+                bar.writel(tsd, Regs::TX_STATUS0 + (buf_index * 4));
+
+                priv_data.tx_buf_head = next_buf_index;
+
+                dev_info!(priv_data.pdev.as_ref(), "told card to send!\n");
+            }
+            None => {
+                dev_err!(priv_data.pdev.as_ref(), "failed to access bar\n");
+            }
+        }
+
         TxCode::Ok
     }
 }
@@ -302,15 +365,21 @@ impl DriverData {
             return Err(InitError::SoftwareResetStuck);
         }
 
-        let dma_handle =
+        let rx_buf_dma_handle =
             CoherentAllocation::alloc_coherent(pdev.as_ref(), 8 * 1024 + 16 + 1536, GFP_KERNEL)
+                .map_err(|_| InitError::BarRevoked)?;
+        let tx_buf_dma_handle =
+            CoherentAllocation::alloc_coherent(pdev.as_ref(), ALL_TX_BUF_LEN, GFP_KERNEL)
                 .map_err(|_| InitError::BarRevoked)?;
 
         dev_info!(pdev.as_ref(), "init done!\n");
         Ok(Self {
             pdev,
             bar: bar_res,
-            dma_handle,
+            rx_buf_dma_handle,
+            tx_buf_dma_handle,
+            tx_buf_head: 0,
+            tx_buf_tail: NUM_TX_BUFS - 1,
         })
     }
 

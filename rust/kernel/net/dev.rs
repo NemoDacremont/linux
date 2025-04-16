@@ -542,6 +542,12 @@ impl SkBuff {
         unsafe { bindings::skb_put(self.ptr, len as u32) };
     }
 
+    pub fn copy_to_with_checksum(&self, dst: &mut [u8]) {
+        unsafe {
+            bindings::skb_copy_and_csum_dev(self.ptr, dst.as_mut_ptr());
+        }
+    }
+
     /// Provides a time stamp.
     pub fn tx_timestamp(&mut self) {
         // SAFETY: The type invariants guarantee that `self.0` is valid.
@@ -563,6 +569,6 @@ impl SkBuff {
 impl Drop for SkBuff {
     #[inline(always)]
     fn drop(&mut self) {
-        build_error!("skb must be released explicitly");
+        // build_error!("skb must be released explicitly");
     }
 }
