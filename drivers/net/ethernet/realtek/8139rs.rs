@@ -75,10 +75,11 @@ enum ChipCmdBits {
     RxBufEmpty = 0x01,
 }
 
-enum IntrStatus {
-    RxOvw = (1 << 4),
-    RxErr = (1 << 1),
-    RxOk = (1 << 0),
+mod interrupt_status {
+    pub const RX_OK: u16 = 1 << 0;
+    pub const RX_ERR: u16 = 1 << 1;
+    pub const TX_OK: u16 = 1 << 2;
+    pub const RX_OVERFLOW: u16 = 1 << 4;
 }
 
 enum RxConfig {
@@ -127,15 +128,15 @@ impl Handler for InterruptHandler {
         };
 
         let status = bar.readw(Regs::INTR_STATUS);
-        if status & (IntrStatus::RxOvw as u16 | IntrStatus::RxOk as u16) != 0 {
-            bar.writew(0x01, Regs::INTR_STATUS);
+        if status & (interrupt_status::RX_OVERFLOW | interrupt_status::RX_OK) != 0 {
+            bar.writew(interrupt_status::RX_OK, Regs::INTR_STATUS);
         }
 
         // unsigned char buf_empty = readb(priv->hwmem + ChipCmd);
         // let mut is_rx_buff_empty = bar.readb(Regs::CHIP_CMD) != 0;
         let mut is_rx_buff_empty = false;
         pr_err!("status={} is_empty={}\n", status, is_rx_buff_empty);
-        if (status & IntrStatus::RxOk as u16) != 0 {
+        if (status & interrupt_status::RX_OK) != 0 {
             while !is_rx_buff_empty {
                 let capr = bar.readw(Regs::CAPR);
                 let start_offset = capr.wrapping_add(16);
@@ -189,7 +190,10 @@ impl DeviceOperations for DriverData {
         dev_info!(priv_data.pdev.as_ref(), "open called from device ops!\n");
 
         bar.writel(priv_data.dma_handle.dma_handle() as u32, Regs::RX_BUF);
-        bar.writeb(ChipCmdBits::CmdRxEnb as u8, Regs::CHIP_CMD);
+        bar.writeb(
+            ChipCmdBits::CmdRxEnb as u8 | ChipCmdBits::CmdTxEnb as u8,
+            Regs::CHIP_CMD,
+        );
 
         let rx_config_read = bar.readl(Regs::RX_CONFIG);
         bar.writel(
@@ -205,7 +209,10 @@ impl DeviceOperations for DriverData {
         bar.writew(0xFFF0, Regs::CAPR);
 
         bar.writew(
-            IntrStatus::RxOvw as u16 | IntrStatus::RxOk as u16 | IntrStatus::RxErr as u16,
+            interrupt_status::RX_OVERFLOW
+                | interrupt_status::RX_OK
+                | interrupt_status::RX_ERR
+                | interrupt_status::TX_OK,
             Regs::INTR_MASK,
         );
 
