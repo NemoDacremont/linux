@@ -271,6 +271,50 @@ impl<T: DeviceOperations> Device<T> {
         }
     }
 
+    pub fn get_mtu(&self) -> u32 {
+        unsafe { (*self.ptr).mtu }
+    }
+
+    pub fn get_features(&self) -> u64 {
+        unsafe { (*self.ptr).features }
+    }
+
+    pub fn set_features(&self, features: u64) {
+        unsafe { (*self.ptr).features = features }
+    }
+
+    pub fn get_hw_features(&self) -> u64 {
+        unsafe { (*self.ptr).hw_features }
+    }
+
+    pub fn set_hw_features(&self, hw_features: u64) {
+        unsafe { (*self.ptr).hw_features = hw_features }
+    }
+
+    pub fn get_vlan_features(&self) -> u64 {
+        unsafe { (*self.ptr).vlan_features }
+    }
+
+    pub fn set_vlan_features(&self, vlan_features: u64) {
+        unsafe { (*self.ptr).vlan_features = vlan_features }
+    }
+
+    pub fn netif_start_queue(&self) {
+        unsafe { bindings::netif_start_queue(self.ptr) }
+    }
+
+    pub fn netif_stop_queue(&self) {
+        unsafe { bindings::netif_stop_queue(self.ptr) }
+    }
+
+    pub fn netif_queue_stopped(&self) -> bool {
+        unsafe { bindings::netif_queue_stopped(self.ptr) }
+    }
+
+    pub fn netif_wake_queue(&self) {
+        unsafe { bindings::netif_wake_queue(self.ptr) }
+    }
+
     /// Sets the max mtu of the device.
     pub fn set_max_mtu(&mut self, max_mtu: u32) {
         // SAFETY: The type invariants guarantee that `self.ptr` is valid.

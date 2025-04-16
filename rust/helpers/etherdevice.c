@@ -1,3 +1,4 @@
+#include "linux/netdevice.h"
 #include <linux/etherdevice.h>
 #include <linux/skbuff.h>
 
@@ -36,4 +37,20 @@ struct sk_buff *rust_helper_netdev_alloc_skb_ip_align(struct net_device *dev,
 		unsigned int length)
 {
 	return netdev_alloc_skb_ip_align(dev, length);
+}
+
+void rust_helper_netif_start_queue(struct net_device *dev) {
+	return netif_start_queue(dev);
+}
+
+void rust_helper_netif_stop_queue(struct net_device *dev) {
+	return netif_stop_queue(dev);
+}
+
+bool rust_helper_netif_queue_stopped(struct net_device *dev) {
+	return netif_queue_stopped(dev);
+}
+
+void rust_helper_netif_wake_queue(struct net_device *dev) {
+	return netif_wake_queue(dev);
 }

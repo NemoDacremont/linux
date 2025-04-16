@@ -110,6 +110,7 @@ struct DriverData {
     pdev: pci::Device,
     bar: Devres<Bar1>,
     rx_buf_dma_handle: CoherentAllocation<u8>,
+    // tx_skb_buf: [Option<SkBuff>; NUM_TX_BUFS],
     tx_buf_dma_handle: CoherentAllocation<u8>,
     tx_buf_head: usize,
     tx_buf_tail: usize,
@@ -180,6 +181,32 @@ impl Handler for InterruptHandler {
 
                 is_rx_buff_empty = bar.readb(Regs::CHIP_CMD) != 0;
             }
+        } else if (status & interrupt_status::TX_OK) != 0 {
+            dev_info!(priv_data.pdev.as_ref(), "Tx interruption");
+
+            while priv_data.tx_buf_tail != priv_data.tx_buf_head {
+                let entry = priv_data.tx_buf_tail;
+
+                // free skb if not
+                // match &priv_data.tx_skb_buf[entry] {
+                //     Some(skb) => {
+                //         skb.consume();
+                //         priv_data.tx_skb_buf[entry] = None;
+                //         dev_info!(priv_data.pdev.as_ref(), "Free skb at entry {}\n", entry);
+                //     }
+                //     None => {}
+                // }
+
+                priv_data.tx_buf_tail = (priv_data.tx_buf_tail + 1) % NUM_TX_BUFS;
+            }
+
+            if ndev_lock.netif_queue_stopped() {
+                return IrqReturn::None;
+            }
+
+            if (priv_data.tx_buf_head + 1) % NUM_TX_BUFS != priv_data.tx_buf_tail {
+                ndev_lock.netif_wake_queue();
+            }
         }
 
         IrqReturn::Handled
@@ -191,6 +218,9 @@ impl DeviceOperations for DriverData {
     fn init(dev: &mut net::dev::Device<DriverData>) -> Result {
         let priv_data = dev.drv_priv_data();
         dev_info!(priv_data.pdev.as_ref(), "init called from device ops!\n");
+
+        dev.set_features(dev.get_features() & !(0 | 1));
+
         Ok(())
     }
 
@@ -210,11 +240,6 @@ impl DeviceOperations for DriverData {
                 Regs::TX_ADDR0 + (i * 4), // each of these registers is 4 bytes
             );
         }
-
-        bar.writeb(
-            ChipCmdBits::CmdRxEnb as u8 | ChipCmdBits::CmdTxEnb as u8,
-            Regs::CHIP_CMD,
-        );
 
         let rx_config_read = bar.readl(Regs::RX_CONFIG);
         bar.writel(
@@ -237,7 +262,12 @@ impl DeviceOperations for DriverData {
             Regs::INTR_MASK,
         );
 
-        // netif start queue ?
+        dev.netif_start_queue();
+
+        bar.writeb(
+            ChipCmdBits::CmdRxEnb as u8 | ChipCmdBits::CmdTxEnb as u8,
+            Regs::CHIP_CMD,
+        );
 
         Ok(())
     }
@@ -255,9 +285,17 @@ impl DeviceOperations for DriverData {
 
         let buf_index = priv_data.tx_buf_head;
         let next_buf_index = (buf_index + 1) % NUM_TX_BUFS;
+
+        // TODO : 14 is ETH_HLEN
+        if skb.data().len() > (dev.get_mtu() + 14) as usize {
+            dev_err!(priv_data.pdev.as_ref(), "skb too big !\n");
+            skb.consume();
+            return TxCode::Ok;
+        }
+
         if next_buf_index == priv_data.tx_buf_tail {
             dev_info!(priv_data.pdev.as_ref(), "no space for tx\n");
-            // TODO: netif stop queue
+            dev.netif_stop_queue();
             skb.consume();
             return TxCode::Busy;
         }
@@ -275,14 +313,15 @@ impl DeviceOperations for DriverData {
 
         // TODO: docs
         let mut tsd: u32 = skb.data().len() as u32 & 0x1FFFu32;
-        tsd |= (0x3F << 16);
+        tsd |= 0x3F << 16;
+
+        // dev.drv_priv_data().tx_skb_buf[buf_index] = Some(skb);
 
         // mem::forget(skb);
-        skb.consume();
 
         match priv_data.bar.try_access() {
             Some(bar) => {
-                bar.writel(tsd, Regs::TX_STATUS0 + (buf_index * 4));
+                bar.try_writel(tsd, Regs::TX_STATUS0 + (buf_index * 4));
 
                 priv_data.tx_buf_head = next_buf_index;
 
@@ -371,12 +410,14 @@ impl DriverData {
         let tx_buf_dma_handle =
             CoherentAllocation::alloc_coherent(pdev.as_ref(), ALL_TX_BUF_LEN, GFP_KERNEL)
                 .map_err(|_| InitError::BarRevoked)?;
+        // let tx_skb_buf = [None; NUM_TX_BUFS];
 
         dev_info!(pdev.as_ref(), "init done!\n");
         Ok(Self {
             pdev,
             bar: bar_res,
             rx_buf_dma_handle,
+            // tx_skb_buf,
             tx_buf_dma_handle,
             tx_buf_head: 0,
             tx_buf_tail: NUM_TX_BUFS - 1,
