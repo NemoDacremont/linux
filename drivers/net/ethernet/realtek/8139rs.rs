@@ -74,11 +74,11 @@ impl Regs {
     const END: usize = 0xD9;
 }
 
-enum ChipCmdBits {
-    CmdReset = 0x10,
-    CmdRxEnb = 0x08,
-    CmdTxEnb = 0x04,
-    RxBufEmpty = 0x01,
+mod chip_cmd_bits {
+    pub const CMD_RESET: u8 = 0x10;
+    pub const CMD_RX_ENABLE: u8 = 0x08;
+    pub const CMD_TX_ENABLE: u8 = 0x04;
+    pub const RX_BUF_EMPTY: u8 = 0x01;
 }
 
 mod interrupt_status {
@@ -88,19 +88,19 @@ mod interrupt_status {
     pub const RX_OVERFLOW: u16 = 1 << 4;
 }
 
-enum RxConfig {
-    /* RxConfig register */
+mod rx_config {
+    /* rx_config register */
     // Bits 11 and 12 to 1
-    RxBufferLengthMax = 0x1800,
+    pub const RX_BUFFER_LENGTH_MAX: u32 = 0x1800;
     // Bits 11 and 12 to 0
-    RxBufferLengthMin = !0x1800,
-    RxWrap = 0x80,
-    AcceptErr = 0x20,       /* Accept packets with CRC errors */
-    AcceptRunt = 0x10,      /* Accept runt (<64 bytes) packets */
-    AcceptBroadcast = 0x08, /* Accept broadcast packets */
-    AcceptMulticast = 0x04, /* Accept multicast packets */
-    AcceptMyPhys = 0x02,    /* Accept pkts with our MAC as dest */
-    AcceptAllPhys = 0x01,   /* Accept all pkts w/ physical dest */
+    pub const RX_BUFFER_LENGTH_MIN: u32 = !0x1800;
+    pub const RX_WRAP: u32 = 0x80;
+    pub const ACCEPT_ERR: u32 = 0x20; /* Accept packets with CRC errors */
+    pub const ACCEPT_RUNT: u32 = 0x10; /* Accept runt (<64 bytes) packets */
+    pub const ACCEPT_BROADCAST: u32 = 0x08; /* Accept broadcast packets */
+    pub const ACCEPT_MULTICAST: u32 = 0x04; /* Accept multicast packets */
+    pub const ACCEPT_MY_PHYS: u32 = 0x02; /* Accept pkts with our MAC as dest */
+    pub const ACCEPT_ALL_PHYS: u32 = 0x01; /* Accept all pkts w/ physical dest */
 }
 
 type Bar1 = pci::Bar<{ Regs::END }>;
@@ -247,11 +247,11 @@ impl DeviceOperations for DriverData {
         let rx_config_read = bar.readl(Regs::RX_CONFIG);
         bar.writel(
             (rx_config_read
-                | RxConfig::RxWrap as u32
-                | RxConfig::AcceptBroadcast as u32
-                | RxConfig::AcceptMulticast as u32
-                | RxConfig::AcceptMyPhys as u32)
-                & RxConfig::RxBufferLengthMin as u32,
+                | rx_config::RX_WRAP
+                | rx_config::ACCEPT_BROADCAST
+                | rx_config::ACCEPT_MULTICAST
+                | rx_config::ACCEPT_MY_PHYS)
+                & rx_config::RX_BUFFER_LENGTH_MIN,
             Regs::RX_CONFIG,
         );
 
@@ -268,7 +268,7 @@ impl DeviceOperations for DriverData {
         dev.netif_start_queue();
 
         bar.writeb(
-            ChipCmdBits::CmdRxEnb as u8 | ChipCmdBits::CmdTxEnb as u8,
+            chip_cmd_bits::CMD_RX_ENABLE | chip_cmd_bits::CMD_TX_ENABLE,
             Regs::CHIP_CMD,
         );
 
@@ -396,14 +396,14 @@ impl DriverData {
         bar.writeb(0x0, Regs::CONFIG1);
 
         // software reset
-        bar.writeb(ChipCmdBits::CmdReset as u8, Regs::CHIP_CMD);
+        bar.writeb(chip_cmd_bits::CMD_RESET, Regs::CHIP_CMD);
         for _ in 0..1000 {
-            if (bar.readb(Regs::CHIP_CMD) & ChipCmdBits::CmdReset as u8) == 0 {
+            if (bar.readb(Regs::CHIP_CMD) & chip_cmd_bits::CMD_RESET) == 0 {
                 break;
             }
             sleep(1_000);
         }
-        if bar.readb(Regs::CHIP_CMD) & ChipCmdBits::CmdReset as u8 != 0 {
+        if bar.readb(Regs::CHIP_CMD) & chip_cmd_bits::CMD_RESET as u8 != 0 {
             return Err(InitError::SoftwareResetStuck);
         }
 
