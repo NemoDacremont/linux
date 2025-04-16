@@ -204,7 +204,7 @@ static int rtl8139c_open(struct net_device *dev)
 					   &priv->dma_handle, GFP_KERNEL);
 	writel(priv->dma_handle, priv->hwmem + RBSTART);
 
-	writew(CmdRxEnb, priv->hwmem + ChipCmd);
+	writeb(CmdRxEnb, priv->hwmem + ChipCmd);
 
 	int rc = request_irq(priv->pdev->irq, interrupt_handler, IRQF_SHARED,
 			     dev->name, dev);
