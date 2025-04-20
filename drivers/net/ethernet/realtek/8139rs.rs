@@ -126,7 +126,7 @@ impl Handler for InterruptHandler {
     fn handle_irq(&self) -> IrqReturn {
         let ndev_lock = self.ndev.lock();
         let priv_data = ndev_lock.drv_priv_data();
-        dev_info!(priv_data.pdev.as_ref(), "irq!\n");
+        // dev_info!(priv_data.pdev.as_ref(), "irq!\n");
         let bar = if let Some(bar) = priv_data.bar.try_access() {
             bar
         } else {
@@ -148,7 +148,7 @@ impl Handler for InterruptHandler {
         // unsigned char buf_empty = readb(priv->hwmem + ChipCmd);
         // let mut is_rx_buff_empty = bar.readb(Regs::CHIP_CMD) != 0;
         let mut is_rx_buff_empty = false;
-        pr_err!("status={} is_empty={}\n", status, is_rx_buff_empty);
+        // pr_err!("status={} is_empty={}\n", status, is_rx_buff_empty);
         if (status & interrupt_status::RX_OK) != 0 {
             while !is_rx_buff_empty {
                 let capr = bar.readw(Regs::CAPR);
@@ -162,19 +162,19 @@ impl Handler for InterruptHandler {
                 };
                 let length = unsafe { header_ptr.wrapping_add(1).read_volatile() } as usize;
 
-                dev_info!(
+                /*                dev_info!(
                     priv_data.pdev.as_ref(),
                     "Size of received packet: {}\n",
                     length
-                );
+                ); */
 
                 let packet = unsafe {
                     core::slice::from_raw_parts(header_ptr.add(2) as *const u8, length - 4)
                 };
-                dev_info!(priv_data.pdev.as_ref(), "packet: {:X?}\n", packet);
+                // dev_info!(priv_data.pdev.as_ref(), "packet: {:X?}\n", packet);
 
                 let skb = ndev_lock.new_skb_from_slice(packet);
-                dev_info!(priv_data.pdev.as_ref(), "skb data: {:X?}\n", skb.data());
+                // dev_info!(priv_data.pdev.as_ref(), "skb data: {:X?}\n", skb.data());
                 ndev_lock.netif_receive_skb(skb);
 
                 bar.writew(
@@ -185,7 +185,7 @@ impl Handler for InterruptHandler {
                 is_rx_buff_empty = bar.readb(Regs::CHIP_CMD) != 0;
             }
         } else if (status & interrupt_status::TX_OK) != 0 {
-            dev_info!(priv_data.pdev.as_ref(), "Tx interruption");
+            // dev_info!(priv_data.pdev.as_ref(), "Tx interruption");
 
             while priv_data.tx_buf_tail != priv_data.tx_buf_head {
                 let entry = priv_data.tx_buf_tail;
@@ -222,7 +222,7 @@ impl DeviceOperations for DriverData {
         let priv_data = dev.drv_priv_data();
         dev_info!(priv_data.pdev.as_ref(), "init called from device ops!\n");
 
-        dev.set_features(dev.get_features() & !(0 | 1));
+        // dev.set_features(dev.get_features() & !(0 | 1));
 
         Ok(())
     }
@@ -283,8 +283,8 @@ impl DeviceOperations for DriverData {
 
     fn start_xmit(dev: &mut net::dev::Device<Self>, skb: SkBuff) -> TxCode {
         let priv_data = dev.drv_priv_data();
-        dev_info!(priv_data.pdev.as_ref(), "xmit called from device ops!\n");
-        dev_info!(priv_data.pdev.as_ref(), "{:02X?}", skb.data());
+        // dev_info!(priv_data.pdev.as_ref(), "xmit called from device ops!\n");
+        // dev_info!(priv_data.pdev.as_ref(), "{:02X?}", skb.data());
 
         let buf_index = priv_data.tx_buf_head;
         let next_buf_index = (buf_index + 1) % NUM_TX_BUFS;
@@ -296,12 +296,12 @@ impl DeviceOperations for DriverData {
             return TxCode::Ok;
         }
 
-        if next_buf_index == priv_data.tx_buf_tail {
-            dev_info!(priv_data.pdev.as_ref(), "no space for tx\n");
-            dev.netif_stop_queue();
-            skb.consume();
-            return TxCode::Busy;
-        }
+        // if next_buf_index == priv_data.tx_buf_tail {
+        //     dev_info!(priv_data.pdev.as_ref(), "no space for tx\n");
+        //     dev.netif_stop_queue();
+        //     skb.consume();
+        //     return TxCode::Busy;
+        // }
 
         let tx_buf = unsafe {
             core::slice::from_raw_parts_mut(
