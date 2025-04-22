@@ -109,7 +109,12 @@ static unsigned int receive_handler(struct net_device *dev, u16 status)
 	if (status & (RxOvw | RxOK)) {
 		// Reset ROK
 		// Overrides everything else!
-		writew(0x01, priv->hwmem + ISR);
+	        // old version :
+	        //writew(new_status, priv->hwmem + ISR);
+	  u16 old_status = readw(priv->hwmem + ISR);
+	  u16 new_status = RxOK|old_status;
+	  writew(new_status, priv->hwmem + ISR);
+	  
 	}
 
 	unsigned char buf_empty = readb(priv->hwmem + ChipCmd);
@@ -126,8 +131,14 @@ static unsigned int receive_handler(struct net_device *dev, u16 status)
 			// pr_info("CAPR: %d\n", CAPR_read);
 
 			// Make the arithmetic here to guarantee wrapping!
-			start_offset = CAPR_read + 16;
+			// Check if we can add 16 else wrap
+			if(CAPR_read<0xFFF0){start_offset = CAPR_read + 16;}
+			else{start_offset = 0x0010-(0x0001+0xFFFF-CAPR_read);}
 
+			//CAPR_read = 0xFA;
+			start_offset = CAPR_read + 16;
+			pr_info("Start offset : %d\n",start_offset);
+			
 			header_ptr =
 				(u16 *)((u8 *)priv->rx_ring + start_offset);
 			length = *(header_ptr + 1);
