@@ -29,9 +29,9 @@ initramfs_create_root: busybox_build ${BUILD_DIR}/send_udp ${BUILD_DIR}/initramf
 # Begin of initramfs_root
 # **Make sure busybox_build as been called before**, otherwise it will not
 # create initramfs correctly
-${BUILD_DIR}/initramfs: ${BUILD_DIR}/initramfs/send_udp
+${BUILD_DIR}/initramfs: ${BUILD_DIR}/initramfs/send_udp ${BUILD_DIR}/initramfs/iperf3
 	@# Create usual Linux directories
-	mkdir -p $@/bin $@/sbin $@/etc $@/proc $@/sys $@/dev $@/usr/bin $@/usr/sbin
+	mkdir -p $@/bin $@/sbin $@/etc $@/proc $@/sys $@/dev $@/usr/bin $@/usr/sbin $@/tmp
 	@# Copy busybox applets to ramfs
 	cp -a ${BUSYBOX__INSTALL_PATH}/* $@
 	touch $@
