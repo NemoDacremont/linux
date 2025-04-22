@@ -282,6 +282,16 @@ static int rtl8139c_open(struct net_device *dev)
 					   &priv->dma_handle, GFP_KERNEL);
 	writel(priv->dma_handle, priv->hwmem + RBSTART);
 
+	// tx ring allocation
+	priv->tx_ring = dma_alloc_coherent(&priv->pdev->dev, TX_BUF_TOT_LEN,
+					   &priv->tx_ring_dma, GFP_KERNEL);
+	if (!priv->tx_ring) {
+		pr_err("\b[RTL8139c] Failed to allocate TX ring\n");
+		iounmap(priv->hwmem);
+		pci_disable_device(priv->pdev);
+		return -ENOMEM;
+	}
+
 	writeb(CmdTxEnb | CmdRxEnb, priv->hwmem + ChipCmd);
 
 	int rc = request_irq(priv->pdev->irq, interrupt_handler, IRQF_SHARED,
@@ -450,18 +460,6 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	// map the PCI device memory to the driver private data
 	priv->hwmem = ioremap(pciaddr, END);
-
-	// tx ring allocation
-
-	priv->tx_ring = dma_alloc_coherent(&pdev->dev, TX_BUF_TOT_LEN,
-					   &priv->tx_ring_dma, GFP_KERNEL);
-
-	if (!priv->tx_ring) {
-		pr_err("\b[RTL8139c] Failed to allocate TX ring\n");
-		iounmap(priv->hwmem);
-		pci_disable_device(pdev);
-		return -ENOMEM;
-	}
 
 	// save data for other functions
 	pci_set_drvdata(pdev, priv);
