@@ -10,7 +10,7 @@
 //! ping 192.168.100.1
 //! ```
 
-use core::{fmt, hint::black_box, mem};
+use core::{cmp::max, fmt, hint::black_box, mem};
 use kernel::{
     c_str,
     devres::Devres,
@@ -19,7 +19,7 @@ use kernel::{
     irq::request::{flags, Handler, IrqReturn, Registration},
     net::{
         self,
-        dev::{DeviceOperations, SkBuff, TxCode},
+        dev::{netif_f, DeviceOperations, SkBuff, TxCode},
     },
     new_mutex, pci,
     prelude::*,
@@ -85,6 +85,7 @@ mod interrupt_status {
     pub const RX_OK: u16 = 1 << 0;
     pub const RX_ERR: u16 = 1 << 1;
     pub const TX_OK: u16 = 1 << 2;
+    pub const TX_ERR: u16 = 1 << 3;
     pub const RX_OVERFLOW: u16 = 1 << 4;
 }
 
@@ -111,6 +112,7 @@ struct DriverData {
     bar: Devres<Bar1>,
     rx_buf_dma_handle: CoherentAllocation<u8>,
     // tx_skb_buf: [Option<SkBuff>; NUM_TX_BUFS],
+    tx_flag: u32,
     tx_buf_dma_handle: CoherentAllocation<u8>,
     tx_buf_head: usize,
     tx_buf_tail: usize,
@@ -184,8 +186,8 @@ impl Handler for InterruptHandler {
 
                 is_rx_buff_empty = bar.readb(Regs::CHIP_CMD) != 0;
             }
-        } else if (status & interrupt_status::TX_OK) != 0 {
-            // dev_info!(priv_data.pdev.as_ref(), "Tx interruption");
+        } else if (status & (interrupt_status::TX_OK | interrupt_status::TX_ERR)) != 0 {
+            dev_info!(priv_data.pdev.as_ref(), "Tx interruption");
 
             while priv_data.tx_buf_tail != priv_data.tx_buf_head {
                 let entry = priv_data.tx_buf_tail;
@@ -222,13 +224,15 @@ impl DeviceOperations for DriverData {
         let priv_data = dev.drv_priv_data();
         dev_info!(priv_data.pdev.as_ref(), "init called from device ops!\n");
 
-        // dev.set_features(dev.get_features() & !(0 | 1));
+        dev.set_features(dev.get_features() & !(netif_f::GSO | netif_f::TSO));
+        dev.set_hw_features(dev.get_hw_features() & !(netif_f::GSO | netif_f::TSO));
+        dev.set_vlan_features(dev.get_vlan_features() & !(netif_f::GSO | netif_f::TSO));
 
         Ok(())
     }
 
     fn open(dev: &mut net::dev::Device<DriverData>) -> Result<(), Error> {
-        let priv_data = dev.drv_priv_data();
+        let mut priv_data = dev.drv_priv_data();
         // change Error later
         let bar = priv_data.bar.try_access().ok_or(ENXIO)?;
         dev_info!(priv_data.pdev.as_ref(), "open called from device ops!\n");
@@ -265,6 +269,8 @@ impl DeviceOperations for DriverData {
             Regs::INTR_MASK,
         );
 
+        priv_data.tx_flag = (256 << 11) & 0x003f0000;
+
         dev.netif_start_queue();
 
         bar.writeb(
@@ -278,6 +284,8 @@ impl DeviceOperations for DriverData {
     fn stop(dev: &mut net::dev::Device<DriverData>) -> Result {
         let priv_data = dev.drv_priv_data();
         dev_info!(priv_data.pdev.as_ref(), "stop called from device ops!\n");
+        dev.netif_stop_queue();
+        dev.netif_carrier_off();
         Ok(())
     }
 
@@ -296,12 +304,12 @@ impl DeviceOperations for DriverData {
             return TxCode::Ok;
         }
 
-        // if next_buf_index == priv_data.tx_buf_tail {
-        //     dev_info!(priv_data.pdev.as_ref(), "no space for tx\n");
-        //     dev.netif_stop_queue();
-        //     skb.consume();
-        //     return TxCode::Busy;
-        // }
+        if next_buf_index == priv_data.tx_buf_tail {
+            dev_info!(priv_data.pdev.as_ref(), "no space for tx\n");
+            dev.netif_stop_queue();
+            mem::forget(skb);
+            return TxCode::Busy;
+        }
 
         let tx_buf = unsafe {
             core::slice::from_raw_parts_mut(
@@ -315,8 +323,8 @@ impl DeviceOperations for DriverData {
         skb.copy_to_with_checksum(tx_buf);
 
         // TODO: docs
-        let mut tsd: u32 = skb.data().len() as u32 & 0x1FFFu32;
-        tsd |= 0x3F << 16;
+        let mut tsd: u32 = max(skb.data().len() as u32, 60);
+        tsd |= priv_data.tx_flag;
 
         // dev.drv_priv_data().tx_skb_buf[buf_index] = Some(skb);
 
@@ -324,7 +332,8 @@ impl DeviceOperations for DriverData {
 
         match priv_data.bar.try_access() {
             Some(bar) => {
-                bar.try_writel(tsd, Regs::TX_STATUS0 + (buf_index * 4));
+                bar.try_writel(tsd, Regs::TX_STATUS0 + (buf_index * size_of::<u32>()));
+                dev_info!(priv_data.pdev.as_ref(), "before netdev sent queue!\n");
 
                 priv_data.tx_buf_head = next_buf_index;
 
@@ -421,6 +430,7 @@ impl DriverData {
             bar: bar_res,
             rx_buf_dma_handle,
             // tx_skb_buf,
+            tx_flag: (256 << 11) & 0x003f0000,
             tx_buf_dma_handle,
             tx_buf_head: 0,
             tx_buf_tail: NUM_TX_BUFS - 1,

@@ -42,7 +42,7 @@ rlinux_all: rlinux_build
 # NB: the hack of using yes "" is to use the default config that may be offered
 # by Linux Kernel's Makefile
 rlinux_build: llvm_install rlinux_rustavailable rlinux_config
-	yes "" | make bzImage -C ${LINUX_PATH} ${RLINUX_FLAGS}
+	yes "" | make rust-analyzer bzImage -C ${LINUX_PATH} ${RLINUX_FLAGS}
 
 # To test if rust is available (and that everything is working)
 rlinux_rustavailable: llvm_install

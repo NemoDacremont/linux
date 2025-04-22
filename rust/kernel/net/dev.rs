@@ -128,6 +128,11 @@ pub mod priv_flags {
     // pub const IFF_CHANGE_PROTO_DOWN: u32 = bindings::netdev_priv_flags_IFF_CHANGE_PROTO_DOWN;
 }
 
+pub mod netif_f {
+    pub const TSO: u32 = bindings::NETIF_F_TSO_BIT;
+    pub const GSO: u32 = bindings::NETIF_F_GSO_BIT;
+}
+
 /// Corresponds to the kernel's `struct net_device_ops`.
 ///
 /// A device driver must implement this. Only very basic operations are supported for now.
@@ -275,28 +280,28 @@ impl<T: DeviceOperations> Device<T> {
         unsafe { (*self.ptr).mtu }
     }
 
-    pub fn get_features(&self) -> u64 {
-        unsafe { (*self.ptr).features }
+    pub fn get_features(&self) -> u32 {
+        unsafe { (*self.ptr).features as u32 }
     }
 
-    pub fn set_features(&self, features: u64) {
-        unsafe { (*self.ptr).features = features }
+    pub fn set_features(&self, features: u32) {
+        unsafe { (*self.ptr).features = features as u64 }
     }
 
-    pub fn get_hw_features(&self) -> u64 {
-        unsafe { (*self.ptr).hw_features }
+    pub fn get_hw_features(&self) -> u32 {
+        unsafe { (*self.ptr).hw_features as u32 }
     }
 
-    pub fn set_hw_features(&self, hw_features: u64) {
-        unsafe { (*self.ptr).hw_features = hw_features }
+    pub fn set_hw_features(&self, hw_features: u32) {
+        unsafe { (*self.ptr).hw_features = hw_features as u64 }
     }
 
-    pub fn get_vlan_features(&self) -> u64 {
-        unsafe { (*self.ptr).vlan_features }
+    pub fn get_vlan_features(&self) -> u32 {
+        unsafe { (*self.ptr).vlan_features as u32 }
     }
 
-    pub fn set_vlan_features(&self, vlan_features: u64) {
-        unsafe { (*self.ptr).vlan_features = vlan_features }
+    pub fn set_vlan_features(&self, vlan_features: u32) {
+        unsafe { (*self.ptr).vlan_features = vlan_features as u64 }
     }
 
     pub fn netif_start_queue(&self) {
@@ -313,6 +318,10 @@ impl<T: DeviceOperations> Device<T> {
 
     pub fn netif_wake_queue(&self) {
         unsafe { bindings::netif_wake_queue(self.ptr) }
+    }
+
+    pub fn netdev_sent_queue(&self, skb: SkBuff) {
+        unsafe { bindings::netdev_sent_queue(self.ptr, skb.as_raw()); }
     }
 
     /// Sets the max mtu of the device.

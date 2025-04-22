@@ -1,6 +1,7 @@
 #include "linux/netdevice.h"
 #include <linux/etherdevice.h>
 #include <linux/skbuff.h>
+#include <linux/netdev.h>
 
 void *rust_helper_netdev_priv(const struct net_device *dev)
 {
@@ -53,4 +54,8 @@ bool rust_helper_netif_queue_stopped(struct net_device *dev) {
 
 void rust_helper_netif_wake_queue(struct net_device *dev) {
 	return netif_wake_queue(dev);
+}
+
+void rust_helper_netdev_sent_queue(struct net_device *dev, struct sk_buff *skb) {
+	return netdev_sent_queue(dev, skb->len);
 }
