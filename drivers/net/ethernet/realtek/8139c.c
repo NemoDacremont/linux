@@ -20,11 +20,32 @@
 	"\b[RTL8139c] MAC address: tval_v0|%02x:%02x:%02x:%02x:%02x:%02x\n"
 #endif // MAC_ADDRESS_MESSAGE
 
+#define TXPOLL 0x38
+
+/* Number of Tx descriptor registers. */
+#define NUM_TX_DESC 4
+/* max supported ethernet frame size -- must be at least (dev->mtu+18+4).*/
+#define MAX_ETH_FRAME_SIZE 1792
+/* Size of the Tx bounce buffers -- must be at least (dev->mtu+18+4). */
+#define TX_BUF_SIZE MAX_ETH_FRAME_SIZE
+#define TX_BUF_TOT_LEN (TX_BUF_SIZE * NUM_TX_DESC)
+
+static irqreturn_t rtl8139c_interrupt(int irq, void *dev_id);
+static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *skb,
+				       struct net_device *dev);
+static void rtl8139c_tx_interrupt(struct net_device *dev);
+static int rtl8139c_dev_init(struct net_device *dev);
+static int rtl8139c_open(struct net_device *dev);
+static int rtl8139c_close(struct net_device *dev);
+static int rtl8139c_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd);
+
 #define IRQF_SHARED 0x00000080
 
 enum RTL8139c_registers {
 	MAC0 = 0, /* Ethernet hardware address. */
 	MAR0 = 8, /* Multicast filter. */
+	TxStatus0 = 0x10, /* Transmit status (Four 32bit registers). */
+	TxAddr0 = 0x20, /* Tx descriptors (also four 32bit). */
 	RBSTART = 0x30, /* Receive buffer start address. */
 	ChipCmd = 0x37, /* Command register. */
 	CAPR = 0x38,
@@ -72,7 +93,19 @@ struct rtl8139c_priv {
 	char mac_address[6];
 	struct pci_dev *pdev;
 	struct net_device *dev;
+	u8 *tx_ring;
+	struct sk_buff *tx_skb[NUM_TX_DESC];
+	dma_addr_t tx_ring_dma;
+	unsigned int tx_head;
+	unsigned int tx_tail;
 };
+
+struct cp_desc {
+	__le32 opts1;
+	__le32 opts2;
+	__le64 addr;
+};
+
 
 static const struct pci_device_id rtl8139c_pci_tbl[] = {
 	{
@@ -82,9 +115,15 @@ static const struct pci_device_id rtl8139c_pci_tbl[] = {
 };
 MODULE_DEVICE_TABLE(pci, rtl8139c_pci_tbl);
 
-// To be implemented later
+// To be implemented laterskb
 static int rtl8139c_dev_init(struct net_device *dev)
 {
+	// permet d'indiquer au noyau que le driver ne supporte pas GSO : la segmentation est fait côté noyau et pas côté driver.
+	//pr_info("je passe bien par la fonction init");
+	dev->features &= ~(NETIF_F_TSO | NETIF_F_GSO);
+	dev->hw_features &= ~(NETIF_F_TSO | NETIF_F_GSO);
+	dev->vlan_features &= ~(NETIF_F_TSO | NETIF_F_GSO);
+
 	pr_info("\b[RTL8139c] dev init\n");
 	return 0;
 }
@@ -207,6 +246,29 @@ static irqreturn_t interrupt_handler(int irq, void *dev_instance)
 // To be implemented later
 static int rtl8139c_open(struct net_device *dev)
 {
+	struct rtl8139c_priv *priv = netdev_priv(dev);
+	int err;
+
+	// Enable interrupt for transmission (TxOK = bit 2)
+	writew((1 << 2), priv->hwmem + IMR);
+
+	// enable Tx + Rx
+	writeb(CmdTxEnb | CmdRxEnb, priv->hwmem + ChipCmd);
+
+	for (unsigned int i = 0; i < NUM_TX_DESC; ++i)
+		writel(priv->tx_ring_dma + (TX_BUF_SIZE * i),
+		       priv->hwmem + TxAddr0 + (i * 4));
+
+	// save interrupt
+	err = request_irq(priv->pdev->irq, rtl8139c_interrupt, IRQF_SHARED,
+			  dev->name, dev);
+	if (err) {
+		pr_err("[RTL8139c] request_irq failed\n");
+		return err;
+	}
+
+	netif_start_queue(dev);
+
 	pr_info("\b[RTL8139c] open\n");
 	struct rtl8139c_priv *priv = netdev_priv(dev);
 
@@ -238,6 +300,10 @@ static int rtl8139c_open(struct net_device *dev)
 // To be implemented later
 static int rtl8139c_close(struct net_device *dev)
 {
+	struct rtl8139c_priv *priv = netdev_priv(dev);
+
+	netif_stop_queue(dev); // stop transmission
+	free_irq(priv->pdev->irq, dev); // free irq
 	pr_info("\b[RTL8139c] close\n");
 	return 0;
 }
@@ -247,18 +313,6 @@ static int rtl8139c_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 {
 	pr_info("\b[RTL8139c] ioctl\n");
 	return 0;
-}
-
-static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *pkt,
-				       struct net_device *dev)
-{
-	pr_info("\b[RTL8139c] Packet emitted lol\n");
-
-	// Try to print packet
-	// pr_debug("Packet emitted: ");
-	// print_packet(pkt->data, pkt->len);
-
-	return NETDEV_TX_OK;
 }
 
 /**
@@ -342,6 +396,18 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	// map the PCI device memory to the driver private data
 	priv->hwmem = ioremap(pciaddr, END);
 
+	// tx ring allocation
+
+	priv->tx_ring = dma_alloc_coherent(&pdev->dev, TX_BUF_TOT_LEN,
+					   &priv->tx_ring_dma, GFP_KERNEL);
+
+	if (!priv->tx_ring) {
+		pr_err("\b[RTL8139c] Failed to allocate TX ring\n");
+		iounmap(priv->hwmem);
+		pci_disable_device(pdev);
+		return -ENOMEM;
+	}
+
 	// save data for other functions
 	pci_set_drvdata(pdev, priv);
 
@@ -376,13 +442,126 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	return 0;
 }
 
+// tester de mettre les options first et last frags
+static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *skb,
+				       struct net_device *dev)
+{
+	//skb->len+=5000;
+	struct rtl8139c_priv *priv = netdev_priv(dev);
+	pr_info(">>> xmit packet len=%d\n", skb->len);
+
+	if (skb_shinfo(skb)->nr_frags > 0)
+		pr_info("TX: skb contains %d fragments", skb_shinfo(skb)->nr_frags);
+
+	unsigned int entry = priv->tx_head;
+	unsigned int next = (entry + 1) % NUM_TX_DESC;
+
+    if (skb->len > dev->mtu + ETH_HLEN) { // verif mtu
+        pr_warn("skb too big (%u > %u), error\n", skb->len, dev->mtu);
+        dev_kfree_skb_any(skb);
+        dev->stats.tx_dropped++;
+        return NETDEV_TX_OK;
+    }
+
+	if (next == priv->tx_tail) { // check space
+		// no space => requeue later
+		pr_info("no space for transmission");
+		netif_stop_queue(dev);
+		return NETDEV_TX_BUSY;
+	}
+
+	// copie dans le buffer DMA
+	skb_copy_and_csum_dev(skb, priv->tx_ring + (entry * TX_BUF_SIZE));
+	priv->tx_skb[entry] = skb;
+
+	// @ physique du buffer
+	writel(priv->tx_ring_dma + (entry * TX_BUF_SIZE),
+	       priv->hwmem + TxAddr0 + (entry * 4));
+
+
+	// bit 0–12 : taille
+	// bit 16–21 : Tx Threshold 
+	// bit 13 (OWN=0) => démarre transmission
+	u32 tsd = skb->len & 0x1FFF;         // Taille
+	tsd |= (0x3F << 16);                 // Threshold max
+
+	writel(tsd, priv->hwmem + TxStatus0 + (entry * 4));
+
+	priv->tx_head = next;
+	pr_info(">>> xmit end");
+	return NETDEV_TX_OK;
+}
+
+static irqreturn_t rtl8139c_interrupt(
+	int irq,
+	void *dev_id) // interrupt handler of driver (cp_interrupt in official), irq : nÂ° interrupt
+{
+	struct net_device *dev = dev_id;
+	struct rtl8139c_priv *priv = netdev_priv(dev);
+
+	u16 status = readw(priv->hwmem + ISR); // ISR has interrupt cause
+	if (!status) // as in official, if any bit, not our interrupt
+		return IRQ_NONE;
+
+	writew(status,
+	       priv->hwmem +
+		       ISR); // as in official, uses to clear 1 bits to 0. prevent loop interrupt
+
+	if (status & (1 << 2)) // TxOK
+		pr_info("INTERRUPT STATUS: 0x%x\n", status);
+		rtl8139c_tx_interrupt(
+			dev); // has to do everything necessary when txOk, means free, moove pointer..
+
+	return IRQ_HANDLED;
+}
+
+static void rtl8139c_tx_interrupt(struct net_device *dev)
+{
+	struct rtl8139c_priv *priv = netdev_priv(dev);
+
+	while (priv->tx_tail != priv->tx_head) { // while there are still descriptor treated by card
+		unsigned int entry = priv->tx_tail;
+
+		// if card has descripor (OWN=1) we stop
+		// if (priv->tx_ring[entry].opts1 & cpu_to_le32(1 << 31))
+		// 	break;
+
+		// free skb if not
+		if (priv->tx_skb[entry]) {
+			dev_kfree_skb(priv->tx_skb[entry]);
+			priv->tx_skb[entry] = NULL;
+			pr_info("freed skb at entry %u\n", entry);
+		}
+
+		// next
+		priv->tx_tail = (priv->tx_tail + 1) % NUM_TX_DESC;
+	}
+	// if queue was stopped due to a fully ring
+	if (!netif_queue_stopped(dev))
+		return;
+
+	if ((priv->tx_head + 1) % NUM_TX_DESC != priv->tx_tail)
+		netif_wake_queue(dev);
+}
+
 static void rtl8139c_remove(struct pci_dev *pdev)
 {
 	struct rtl8139c_priv *drv_priv = pci_get_drvdata(pdev);
+
+	if (drv_priv->tx_ring) {
+		dma_free_coherent(&pdev->dev,
+				  sizeof(struct cp_desc) * NUM_TX_DESC,
+				  drv_priv->tx_ring, drv_priv->tx_ring_dma);
+		drv_priv->tx_ring = NULL;
+	}
+
 	if (drv_priv->hwmem) {
 		iounmap(drv_priv->hwmem);
-		kfree(drv_priv);
+		drv_priv->hwmem = NULL;
 	}
+
+	free_netdev(drv_priv->dev); // libÃ¨re la struct net_device + drv_priv
+
 	pr_info("\b[RTL8139c] removed\n");
 }
 
