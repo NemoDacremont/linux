@@ -13,14 +13,11 @@
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/io.h>
-// #include "linux/ip.h"
 
 #ifndef MAC_ADDRESS_MESSAGE
 #define MAC_ADDRESS_MESSAGE \
 	"\b[RTL8139c] MAC address: tval_v0|%02x:%02x:%02x:%02x:%02x:%02x\n"
 #endif // MAC_ADDRESS_MESSAGE
-
-#define TXPOLL 0x38
 
 /* Number of Tx descriptor registers. */
 #define NUM_TX_DESC 4
@@ -29,17 +26,6 @@
 /* Size of the Tx bounce buffers -- must be at least (dev->mtu+18+4). */
 #define TX_BUF_SIZE MAX_ETH_FRAME_SIZE
 #define TX_BUF_TOT_LEN (TX_BUF_SIZE * NUM_TX_DESC)
-
-static irqreturn_t rtl8139c_interrupt(int irq, void *dev_id);
-static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *skb,
-				       struct net_device *dev);
-static void rtl8139c_tx_interrupt(struct net_device *dev);
-static int rtl8139c_dev_init(struct net_device *dev);
-static int rtl8139c_open(struct net_device *dev);
-static int rtl8139c_close(struct net_device *dev);
-static int rtl8139c_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd);
-
-#define IRQF_SHARED 0x00000080
 
 enum RTL8139c_registers {
 	MAC0 = 0, /* Ethernet hardware address. */
@@ -65,6 +51,7 @@ enum ChipCmdBits {
 
 enum IntrStatus {
 	RxOvw = (1 << 4),
+	TxOK = (1 << 2), /* Tx */
 	RxErr = (1 << 1), /* Rx error */
 	RxOK = (1 << 0) /* Rx packet received */
 };
@@ -106,7 +93,6 @@ struct cp_desc {
 	__le64 addr;
 };
 
-
 static const struct pci_device_id rtl8139c_pci_tbl[] = {
 	{
 		PCI_DEVICE(0x10EC, 0x8139),
@@ -141,20 +127,46 @@ static void print_packet(void *ptr, unsigned int length)
 	pr_debug("\n");
 }
 
+static void transmit_handler(struct net_device *dev, u16 status)
+{
+	struct rtl8139c_priv *priv = netdev_priv(dev);
+
+	if (status & (RxOvw | RxOK))
+		writew(status | TxOK, priv->hwmem + ISR);
+
+	while (priv->tx_tail !=
+	       priv->tx_head) { // while there are still descriptor treated by card
+		unsigned int entry = priv->tx_tail;
+
+		// if card has descripor (OWN=1) we stop
+		// if (priv->tx_ring[entry].opts1 & cpu_to_le32(1 << 31))
+		// 	break;
+
+		// free skb if not
+		if (priv->tx_skb[entry]) {
+			dev_kfree_skb(priv->tx_skb[entry]);
+			priv->tx_skb[entry] = NULL;
+			pr_info("freed skb at entry %u\n", entry);
+		}
+
+		// next
+		priv->tx_tail = (priv->tx_tail + 1) % NUM_TX_DESC;
+	}
+
+	// if queue was stopped due to a fully ring
+	if (!netif_queue_stopped(dev))
+		return;
+
+	if ((priv->tx_head + 1) % NUM_TX_DESC != priv->tx_tail)
+		netif_wake_queue(dev);
+}
+
 static unsigned int receive_handler(struct net_device *dev, u16 status)
 {
 	struct rtl8139c_priv *priv = netdev_priv(dev);
 
-	if (status & (RxOvw | RxOK)) {
-		// Reset ROK
-		// Overrides everything else!
-	        // old version :
-	        //writew(new_status, priv->hwmem + ISR);
-	  u16 old_status = readw(priv->hwmem + ISR);
-	  u16 new_status = RxOK|old_status;
-	  writew(new_status, priv->hwmem + ISR);
-	  
-	}
+	if (status & (RxOvw | RxOK))
+		writew(status | RxOK, priv->hwmem + ISR);
 
 	unsigned char buf_empty = readb(priv->hwmem + ChipCmd);
 
@@ -171,13 +183,17 @@ static unsigned int receive_handler(struct net_device *dev, u16 status)
 
 			// Make the arithmetic here to guarantee wrapping!
 			// Check if we can add 16 else wrap
-			if(CAPR_read<0xFFF0){start_offset = CAPR_read + 16;}
-			else{start_offset = 0x0010-(0x0001+0xFFFF-CAPR_read);}
+			if (CAPR_read < 0xFFF0) {
+				start_offset = CAPR_read + 16;
+			} else {
+				start_offset =
+					0x0010 - (0x0001 + 0xFFFF - CAPR_read);
+			}
 
 			//CAPR_read = 0xFA;
 			start_offset = CAPR_read + 16;
-			pr_info("Start offset : %d\n",start_offset);
-			
+			pr_info("Start offset : %d\n", start_offset);
+
 			header_ptr =
 				(u16 *)((u8 *)priv->rx_ring + start_offset);
 			length = *(header_ptr + 1);
@@ -236,9 +252,14 @@ static irqreturn_t interrupt_handler(int irq, void *dev_instance)
 
 	u16 status = readw(priv->hwmem + ISR);
 
-	if (status & (RxOK | RxErr | RxOvw)) {
+	// Reception
+	if (status & (RxOK | RxErr | RxOvw))
 		receive_handler(dev, status);
-	}
+
+	// Transmission
+	if (status & TxOK)
+		// has to do everything necessary when txOk, means free, moove pointer..
+		transmit_handler(dev, status);
 
 	return IRQ_HANDLED;
 }
@@ -247,37 +268,21 @@ static irqreturn_t interrupt_handler(int irq, void *dev_instance)
 static int rtl8139c_open(struct net_device *dev)
 {
 	struct rtl8139c_priv *priv = netdev_priv(dev);
-	int err;
-
-	// Enable interrupt for transmission (TxOK = bit 2)
-	writew((1 << 2), priv->hwmem + IMR);
-
-	// enable Tx + Rx
-	writeb(CmdTxEnb | CmdRxEnb, priv->hwmem + ChipCmd);
 
 	for (unsigned int i = 0; i < NUM_TX_DESC; ++i)
 		writel(priv->tx_ring_dma + (TX_BUF_SIZE * i),
 		       priv->hwmem + TxAddr0 + (i * 4));
 
-	// save interrupt
-	err = request_irq(priv->pdev->irq, rtl8139c_interrupt, IRQF_SHARED,
-			  dev->name, dev);
-	if (err) {
-		pr_err("[RTL8139c] request_irq failed\n");
-		return err;
-	}
-
 	netif_start_queue(dev);
 
 	pr_info("\b[RTL8139c] open\n");
-	struct rtl8139c_priv *priv = netdev_priv(dev);
 
 	priv->rx_ring = dma_alloc_coherent(&priv->pdev->dev,
 					   8 * 1024 + 16 + 1536,
 					   &priv->dma_handle, GFP_KERNEL);
 	writel(priv->dma_handle, priv->hwmem + RBSTART);
 
-	writeb(CmdRxEnb, priv->hwmem + ChipCmd);
+	writeb(CmdTxEnb | CmdRxEnb, priv->hwmem + ChipCmd);
 
 	int rc = request_irq(priv->pdev->irq, interrupt_handler, IRQF_SHARED,
 			     dev->name, dev);
@@ -292,9 +297,59 @@ static int rtl8139c_open(struct net_device *dev)
 
 	writew(0xfff0, priv->hwmem + CAPR);
 
-	writew(RxOvw | RxOK | RxErr, priv->hwmem + IMR);
+	writew(RxOvw | RxOK | RxErr | TxOK, priv->hwmem + IMR);
 
 	return 0;
+}
+
+// tester de mettre les options first et last frags
+static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *skb,
+				       struct net_device *dev)
+{
+	//skb->len+=5000;
+	struct rtl8139c_priv *priv = netdev_priv(dev);
+	pr_info(">>> xmit packet len=%d\n", skb->len);
+
+	if (skb_shinfo(skb)->nr_frags > 0)
+		pr_info("TX: skb contains %d fragments",
+			skb_shinfo(skb)->nr_frags);
+
+	unsigned int entry = priv->tx_head;
+	unsigned int next = (entry + 1) % NUM_TX_DESC;
+
+	if (skb->len > dev->mtu + ETH_HLEN) { // verif mtu
+		pr_warn("skb too big (%u > %u), error\n", skb->len, dev->mtu);
+		dev_kfree_skb_any(skb);
+		dev->stats.tx_dropped++;
+		return NETDEV_TX_OK;
+	}
+
+	if (next == priv->tx_tail) { // check space
+		// no space => requeue later
+		pr_info("no space for transmission");
+		netif_stop_queue(dev);
+		return NETDEV_TX_BUSY;
+	}
+
+	// copie dans le buffer DMA
+	skb_copy_and_csum_dev(skb, priv->tx_ring + (entry * TX_BUF_SIZE));
+	priv->tx_skb[entry] = skb;
+
+	// @ physique du buffer
+	writel(priv->tx_ring_dma + (entry * TX_BUF_SIZE),
+	       priv->hwmem + TxAddr0 + (entry * 4));
+
+	// bit 0–12 : taille
+	// bit 16–21 : Tx Threshold
+	// bit 13 (OWN=0) => démarre transmission
+	u32 tsd = skb->len & 0x1FFF; // Taille
+	tsd |= (0x3F << 16); // Threshold max
+
+	writel(tsd, priv->hwmem + TxStatus0 + (entry * 4));
+
+	priv->tx_head = next;
+	pr_info(">>> xmit end");
+	return NETDEV_TX_OK;
 }
 
 // To be implemented later
@@ -440,108 +495,6 @@ static int rtl8139c_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	}
 
 	return 0;
-}
-
-// tester de mettre les options first et last frags
-static netdev_tx_t rtl8139c_start_xmit(struct sk_buff *skb,
-				       struct net_device *dev)
-{
-	//skb->len+=5000;
-	struct rtl8139c_priv *priv = netdev_priv(dev);
-	pr_info(">>> xmit packet len=%d\n", skb->len);
-
-	if (skb_shinfo(skb)->nr_frags > 0)
-		pr_info("TX: skb contains %d fragments", skb_shinfo(skb)->nr_frags);
-
-	unsigned int entry = priv->tx_head;
-	unsigned int next = (entry + 1) % NUM_TX_DESC;
-
-    if (skb->len > dev->mtu + ETH_HLEN) { // verif mtu
-        pr_warn("skb too big (%u > %u), error\n", skb->len, dev->mtu);
-        dev_kfree_skb_any(skb);
-        dev->stats.tx_dropped++;
-        return NETDEV_TX_OK;
-    }
-
-	if (next == priv->tx_tail) { // check space
-		// no space => requeue later
-		pr_info("no space for transmission");
-		netif_stop_queue(dev);
-		return NETDEV_TX_BUSY;
-	}
-
-	// copie dans le buffer DMA
-	skb_copy_and_csum_dev(skb, priv->tx_ring + (entry * TX_BUF_SIZE));
-	priv->tx_skb[entry] = skb;
-
-	// @ physique du buffer
-	writel(priv->tx_ring_dma + (entry * TX_BUF_SIZE),
-	       priv->hwmem + TxAddr0 + (entry * 4));
-
-
-	// bit 0–12 : taille
-	// bit 16–21 : Tx Threshold 
-	// bit 13 (OWN=0) => démarre transmission
-	u32 tsd = skb->len & 0x1FFF;         // Taille
-	tsd |= (0x3F << 16);                 // Threshold max
-
-	writel(tsd, priv->hwmem + TxStatus0 + (entry * 4));
-
-	priv->tx_head = next;
-	pr_info(">>> xmit end");
-	return NETDEV_TX_OK;
-}
-
-static irqreturn_t rtl8139c_interrupt(
-	int irq,
-	void *dev_id) // interrupt handler of driver (cp_interrupt in official), irq : nÂ° interrupt
-{
-	struct net_device *dev = dev_id;
-	struct rtl8139c_priv *priv = netdev_priv(dev);
-
-	u16 status = readw(priv->hwmem + ISR); // ISR has interrupt cause
-	if (!status) // as in official, if any bit, not our interrupt
-		return IRQ_NONE;
-
-	writew(status,
-	       priv->hwmem +
-		       ISR); // as in official, uses to clear 1 bits to 0. prevent loop interrupt
-
-	if (status & (1 << 2)) // TxOK
-		pr_info("INTERRUPT STATUS: 0x%x\n", status);
-		rtl8139c_tx_interrupt(
-			dev); // has to do everything necessary when txOk, means free, moove pointer..
-
-	return IRQ_HANDLED;
-}
-
-static void rtl8139c_tx_interrupt(struct net_device *dev)
-{
-	struct rtl8139c_priv *priv = netdev_priv(dev);
-
-	while (priv->tx_tail != priv->tx_head) { // while there are still descriptor treated by card
-		unsigned int entry = priv->tx_tail;
-
-		// if card has descripor (OWN=1) we stop
-		// if (priv->tx_ring[entry].opts1 & cpu_to_le32(1 << 31))
-		// 	break;
-
-		// free skb if not
-		if (priv->tx_skb[entry]) {
-			dev_kfree_skb(priv->tx_skb[entry]);
-			priv->tx_skb[entry] = NULL;
-			pr_info("freed skb at entry %u\n", entry);
-		}
-
-		// next
-		priv->tx_tail = (priv->tx_tail + 1) % NUM_TX_DESC;
-	}
-	// if queue was stopped due to a fully ring
-	if (!netif_queue_stopped(dev))
-		return;
-
-	if ((priv->tx_head + 1) % NUM_TX_DESC != priv->tx_tail)
-		netif_wake_queue(dev);
 }
 
 static void rtl8139c_remove(struct pci_dev *pdev)
