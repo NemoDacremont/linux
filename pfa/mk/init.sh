@@ -14,8 +14,6 @@ Boot took $(cut -d' ' -f1 /proc/uptime) seconds
 ip link set eth0 up  # Enable communication with host
 ip a add dev eth0 192.168.252.1/24  # Set an ip a
 
-echo $1
-
 if [ "$1" = "tval_v0" ]
 then
 	# Force init kill to stop the vm
@@ -41,6 +39,18 @@ EOF
 
 	# Force init kill to stop the vm, wait for nc 9998 writing msg to stdout
     sleep 0.5
+	exit 1
+
+elif [ "$1" = "tval_v2send'" ]
+then
+    /send_udp
+    ls /send_udp
+    sleep 0.5
+	exit 1
+
+elif [ "$1" = "tval_v2recv'" ]
+then
+    timeout 2 nc -lnvu -p 9999
 	exit 1
 fi
 

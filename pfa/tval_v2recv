@@ -1,0 +1,36 @@
+#!/bin/sh
+
+BUILD_DIR=build
+LINUX_PATH=..
+MAC_ADDRESS=de:ad:be:ef:ca:fe
+
+most_qemu_args="-kernel ${LINUX_PATH}/arch/x86_64/boot/bzImage -initrd ${BUILD_DIR}/initramfs.cpio.gz -no-reboot -nographic -device pci-testdev -netdev tap,id=mynet0 -device rtl8139,netdev=mynet0,mac=${MAC_ADDRESS}"
+
+sudo id > /dev/null 2>/dev/null
+# Make sure we have sudo token
+
+spam ()
+{
+    for _ in $(seq 1 100)
+    do
+        sudo python3 ./send_udp.py >/dev/null 2>&1
+        sleep 0.1
+        if grep 'tvalv2|recv' .tval_v2recv.output >/dev/null
+        then
+            break
+        fi
+    done
+}
+
+exec_test ()
+{
+    (sudo timeout 10 qemu-system-x86_64 ${most_qemu_args} -append "console=ttyS0 panic=-1 loglevel=15 init='/init tval_v2recv'" 2>&1 | tee .tval_v2recv.output) &
+
+    spam
+    wait
+
+    grep 'tvalv2|recv' .tval_v2recv.output >/dev/null && echo "OK - tvalv2 recv" || echo "NOK - tvalv2 recv"
+    rm -f .tval_v2recv.output
+}
+
+exec_test
