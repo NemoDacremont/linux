@@ -131,7 +131,7 @@ static void transmit_handler(struct net_device *dev, u16 status)
 {
 	struct rtl8139c_priv *priv = netdev_priv(dev);
 
-	if (status & (RxOvw | RxOK))
+	if (status & (TxOK))
 		writew(status | TxOK, priv->hwmem + ISR);
 
 	while (priv->tx_tail !=
