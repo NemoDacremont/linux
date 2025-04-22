@@ -158,6 +158,18 @@ rtval_v2recv: rbuild
 cptval_v2recv: cpbuild
 	sudo ./tval_v2recv
 
+# Used to benchmark the kernel's official driver for rtl8139
+cpbenchmark: cpbuild
+	sudo ./benchmark
+
+# Used to benchmark our C driver
+cbenchmark: cbuild
+	sudo ./benchmark
+
+# Used to benchmark our rust driver
+rbenchmark: rbuild
+	sudo ./benchmark
+
 # Test if % is installed, recommand to use ${DEP_CMD} otherwise
 ${REQ_CMD_TARGETS}: check_dep_%:
 	@which $* 2>&1 > /dev/null || (echo -e "\n(ERROR) couldn\'t find $*, considere installing all dependencies with : \n${DEP_CMD}\n" 1>&2 ; exit 1)
