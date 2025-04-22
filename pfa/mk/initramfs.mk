@@ -34,11 +34,13 @@ ${BUILD_DIR}/initramfs: ${BUILD_DIR}/initramfs/send_udp
 	mkdir -p $@/bin $@/sbin $@/etc $@/proc $@/sys $@/dev $@/usr/bin $@/usr/sbin
 	@# Copy busybox applets to ramfs
 	cp -a ${BUSYBOX__INSTALL_PATH}/* $@
+	touch $@
 
 ${BUILD_DIR}/send_udp: ${SRC_DIR}/send_udp.c
 	$(CC) -o $@ $^ -static
 
 ${BUILD_DIR}/initramfs/send_udp: ${BUILD_DIR}/send_udp
+	mkdir -p $(dir $@)
 	cp -a $^ $@
 
 # copy the init.sh into the final directory
