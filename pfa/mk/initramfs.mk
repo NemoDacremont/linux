@@ -39,8 +39,9 @@ ${BUILD_DIR}/initramfs: ${BUILD_DIR}/initramfs/send_udp
 ${BUILD_DIR}/send_udp: ${SRC_DIR}/send_udp.c
 	$(CC) -o $@ $^ -static
 
-${BUILD_DIR}/initramfs/send_udp: ${BUILD_DIR}/send_udp
-	mkdir -p $(dir $@)
+
+${BUILD_DIR}/initramfs/%: ${BUILD_DIR}/%
+	@mkdir -p $(dir $@)
 	cp -a $^ $@
 
 # copy the init.sh into the final directory
