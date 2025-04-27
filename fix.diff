@@ -1,0 +1,38 @@
+diff --git a/pfa/mk/initramfs.mk b/pfa/mk/initramfs.mk
+index 54bad61746ae..e241e6504d8d 100644
+--- a/pfa/mk/initramfs.mk
++++ b/pfa/mk/initramfs.mk
+@@ -34,11 +34,13 @@ ${BUILD_DIR}/initramfs: ${BUILD_DIR}/initramfs/send_udp
+ 	mkdir -p $@/bin $@/sbin $@/etc $@/proc $@/sys $@/dev $@/usr/bin $@/usr/sbin
+ 	@# Copy busybox applets to ramfs
+ 	cp -a ${BUSYBOX__INSTALL_PATH}/* $@
++	touch $@
+ 
+ ${BUILD_DIR}/send_udp: ${SRC_DIR}/send_udp.c
+ 	$(CC) -o $@ $^ -static
+ 
+ ${BUILD_DIR}/initramfs/send_udp: ${BUILD_DIR}/send_udp
++	mkdir -p $(dir $@)
+ 	cp -a $^ $@
+ 
+ # copy the init.sh into the final directory
+diff --git a/pfa/mk/rlinux.mk b/pfa/mk/rlinux.mk
+index ba5903c1d69e..98d9ef226e97 100644
+--- a/pfa/mk/rlinux.mk
++++ b/pfa/mk/rlinux.mk
+@@ -36,13 +36,13 @@ all:
+ rlinux_all: rlinux_build
+ 
+ # Build x86 Linux Kernel
+-# This is a PHONY target because the need to compile files is delegated to 
++# This is a PHONY target because the need to compile files is delegated to
+ # Linux Kernel's Makefile
+ #
+ # NB: the hack of using yes "" is to use the default config that may be offered
+ # by Linux Kernel's Makefile
+ rlinux_build: llvm_install rlinux_rustavailable rlinux_config
+-	yes "" | make bzImage -C ${LINUX_PATH} ${RLINUX_FLAGS}
++	yes "" | make rust-analyzer bzImage -C ${LINUX_PATH} ${RLINUX_FLAGS}
+ 
+ # To test if rust is available (and that everything is working)
+ rlinux_rustavailable: llvm_install

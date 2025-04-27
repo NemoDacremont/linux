@@ -379,6 +379,12 @@ impl Device {
         unsafe { (*self.as_raw()).device }
     }
 
+    /// Returns the PCI device ID.
+    pub fn irq(&self) -> u32 {
+        // SAFETY: `self.as_raw` is a valid pointer to a `struct pci_dev`.
+        unsafe { (*self.as_raw()).irq }
+    }
+
     /// Enable memory resources for this device.
     pub fn enable_device_mem(&self) -> Result {
         // SAFETY: `self.as_raw` is guaranteed to be a pointer to a valid `struct pci_dev`.

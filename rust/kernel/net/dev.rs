@@ -218,12 +218,12 @@ impl<T: DeviceOperations> Device<T> {
     }
 
     /// Gets the private data of a device driver.
-    pub fn drv_priv_data(&self) -> <KBox<T> as ForeignOwnable>::Borrowed<'_> {
+    pub fn drv_priv_data(&self) -> <KBox<T> as ForeignOwnable>::BorrowedMut<'_> {
         // SAFETY: The type invariants guarantee that self.ptr is valid and
         // bindings::netdev_priv(self.ptr) returns a pointer that stores an address
         // returned by `ForeignOwnable::into_foreign()`.
         unsafe {
-            KBox::<T>::borrow(core::ptr::read(
+            KBox::<T>::borrow_mut(core::ptr::read(
                 bindings::netdev_priv(self.ptr) as *const *mut c_void
             ))
         }
@@ -244,6 +244,11 @@ impl<T: DeviceOperations> Device<T> {
         Ok(())
     }
 
+    /// Gets the name of a device.
+    pub fn get_name(&self) -> &'static CStr {
+        unsafe { CStr::from_bytes_with_nul(&(*self.ptr).name).expect("Invalid name") }
+    }
+
     /// Sets carrier.
     pub fn netif_carrier_on(&mut self) {
         // SAFETY: The type invariants guarantee that `self.ptr` is valid.
@@ -254,6 +259,60 @@ impl<T: DeviceOperations> Device<T> {
     pub fn netif_carrier_off(&mut self) {
         // SAFETY: The type invariants guarantee that `self.ptr` is valid.
         unsafe { bindings::netif_carrier_off(self.ptr) }
+    }
+
+    /// Send skb.
+    pub fn netif_receive_skb(&self, skb: SkBuff) -> i32 {
+        // SAFETY: The type invariants guarantee that `self.ptr` is valid.
+        unsafe {
+            let result = bindings::netif_receive_skb(skb.as_raw());
+            mem::forget(skb);
+            result
+        }
+    }
+
+    pub fn get_mtu(&self) -> u32 {
+        unsafe { (*self.ptr).mtu }
+    }
+
+    pub fn get_features(&self) -> u64 {
+        unsafe { (*self.ptr).features }
+    }
+
+    pub fn set_features(&self, features: u64) {
+        unsafe { (*self.ptr).features = features }
+    }
+
+    pub fn get_hw_features(&self) -> u64 {
+        unsafe { (*self.ptr).hw_features }
+    }
+
+    pub fn set_hw_features(&self, hw_features: u64) {
+        unsafe { (*self.ptr).hw_features = hw_features }
+    }
+
+    pub fn get_vlan_features(&self) -> u64 {
+        unsafe { (*self.ptr).vlan_features }
+    }
+
+    pub fn set_vlan_features(&self, vlan_features: u64) {
+        unsafe { (*self.ptr).vlan_features = vlan_features }
+    }
+
+    pub fn netif_start_queue(&self) {
+        unsafe { bindings::netif_start_queue(self.ptr) }
+    }
+
+    pub fn netif_stop_queue(&self) {
+        unsafe { bindings::netif_stop_queue(self.ptr) }
+    }
+
+    pub fn netif_queue_stopped(&self) -> bool {
+        unsafe { bindings::netif_queue_stopped(self.ptr) }
+    }
+
+    pub fn netif_wake_queue(&self) {
+        unsafe { bindings::netif_wake_queue(self.ptr) }
     }
 
     /// Sets the max mtu of the device.
@@ -409,6 +468,21 @@ impl<T: DeviceOperations> Device<T> {
         mem::forget(dev); // dropping a Device<T> frees the private data, unregisters the device & frees the device. We want to avoid that
         res
     }
+
+    pub fn new_skb_from_slice(&self, data: &[u8]) -> SkBuff {
+        let len = data.len();
+        let skb_ptr = unsafe { bindings::netdev_alloc_skb_ip_align(self.ptr, len as u32) };
+        // TODO: check that ptr != NULL
+        let mut skb = unsafe { SkBuff::from_ptr(skb_ptr) };
+        skb.put(len); // increment skb data len
+        skb.data_mut().copy_from_slice(data); // so that it matches here for rust slice copy's len checks
+
+        skb.ip_summed(bindings::CHECKSUM_UNNECESSARY as u8);
+        let protocol = unsafe { bindings::eth_type_trans(skb.as_raw(), self.ptr) };
+        skb.protocol(protocol);
+
+        skb
+    }
 }
 
 impl<T: DeviceOperations> Drop for Device<T> {
@@ -466,7 +540,9 @@ pub enum TxCode {
 /// # Invariants
 ///
 /// The pointer is valid.
-pub struct SkBuff(*mut bindings::sk_buff);
+pub struct SkBuff {
+    ptr: *mut bindings::sk_buff,
+}
 
 impl SkBuff {
     /// Creates a new [`SkBuff`] instance.
@@ -476,30 +552,67 @@ impl SkBuff {
     /// Callers must ensure that `ptr` must be valid.
     unsafe fn from_ptr(ptr: *mut bindings::sk_buff) -> Self {
         // INVARIANT: The safety requirements ensure the invariant.
-        Self(ptr)
+        Self { ptr }
+    }
+
+    /// Returns the pointer to the `sk_buff` object.
+    pub fn as_raw(&self) -> *mut bindings::sk_buff {
+        self.ptr
+    }
+
+    /// Change `skb->ip_summed` to `val`.
+    pub fn ip_summed(&self, val: u8) -> () {
+        unsafe {
+            bindings::set_skb_ip_summed(self.ptr, val);
+        }
+    }
+
+    /// Change `skb->protocol` to `val`.
+    pub fn protocol(&self, val: u16) -> () {
+        unsafe {
+            bindings::set_skb_protocol(self.ptr, val);
+        }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        unsafe { core::slice::from_raw_parts((*self.ptr).data, (*self.ptr).len as usize) }
+    }
+
+    fn data_mut(&mut self) -> &mut [u8] {
+        unsafe { core::slice::from_raw_parts_mut((*self.ptr).data, (*self.ptr).len as usize) }
+    }
+
+    fn put(&mut self, len: usize) {
+        unsafe { bindings::skb_put(self.ptr, len as u32) };
+    }
+
+    pub fn copy_to_with_checksum(&self, dst: &mut [u8]) {
+        unsafe {
+            bindings::skb_copy_and_csum_dev(self.ptr, dst.as_mut_ptr());
+        }
     }
 
     /// Provides a time stamp.
     pub fn tx_timestamp(&mut self) {
         // SAFETY: The type invariants guarantee that `self.0` is valid.
         unsafe {
-            bindings::skb_tx_timestamp(self.0);
+            bindings::skb_tx_timestamp(self.ptr);
         }
     }
 
-    // /// Consumes a [`sk_buff`] object.
-    // pub fn consume(self) {
-    //     // SAFETY: The type invariants guarantee that `self.0` is valid.
-    //     unsafe {
-    //         bindings::kfree_skb_reason(self.0, bindings::skb_drop_reason_SKB_CONSUMED);
-    //     }
-    //     core::mem::forget(self);
-    // }
+    /// Consumes a [`sk_buff`] object.
+    pub fn consume(self) {
+        // SAFETY: The type invariants guarantee that `self.ptr` is valid.
+        unsafe {
+            bindings::kfree_skb_reason(self.ptr, bindings::skb_drop_reason_SKB_CONSUMED);
+        }
+        core::mem::forget(self);
+    }
 }
 
 impl Drop for SkBuff {
     #[inline(always)]
     fn drop(&mut self) {
-        build_error!("skb must be released explicitly");
+        // build_error!("skb must be released explicitly");
     }
 }
